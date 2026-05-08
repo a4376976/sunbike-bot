@@ -198,20 +198,24 @@ async function smartReply(text, env) {
 }
 
 // 數字關鍵字智慧處理
-async function handleNumberKeyword(num, userText, targetId, env) {
+async function handleNumberKeyword(num, userText, targetId, env, replyToken=null) {
+  const reply = async (msg) => {
+    if (replyToken) { await lineReply(replyToken, msg, env); replyToken = null; }
+    else await reply( msg, env);
+  };
   const trimmed = userText.trim();
   switch(num) {
     case '4': {
       const city = trimmed.replace(/^4\s*/, '').trim();
-      if (!city) { await linePush(targetId, '請輸入城市名稱 😊\n例如：4 台北', env); return; }
+      if (!city) { await reply( '請輸入城市名稱 😊\n例如：4 台北', env); return; }
       const weatherData = await getWeather(city, env);
       if (weatherData) {
         const rideMsg = weatherData.includes('🔥') ? '\n\n⚠️ 天氣炎熱，騎車記得多補水！' :
                         weatherData.includes('🌧') ? '\n\n🌧️ 有雨，出門記得評估路況！' :
                         '\n\n✅ 天氣不錯，適合出門騎車！🚴‍♀️';
-        await linePush(targetId, weatherData + rideMsg, env);
+        await reply( weatherData + rideMsg, env);
       } else {
-        await linePush(targetId, `抱歉～查不到「${city}」的天氣資料 😅\n請確認城市名稱，例如：4 Taipei 或 4 台北`, env);
+        await reply( `抱歉～查不到「${city}」的天氣資料 😅\n請確認城市名稱，例如：4 Taipei 或 4 台北`, env);
       }
       break;
     }
@@ -230,40 +234,40 @@ async function handleNumberKeyword(num, userText, targetId, env) {
             msg += '─────────────────\n';
           }
           msg += '報名請找隊長阿欽 😄';
-          await linePush(targetId, msg, env);
+          await reply( msg, env);
         } else {
-          await linePush(targetId, '目前沒有排定的約騎行程 🚴‍♀️\n有活動會提前公告，記得關注群組！\n報名找隊長阿欽 😄', env);
+          await reply( '目前沒有排定的約騎行程 🚴‍♀️\n有活動會提前公告，記得關注群組！\n報名找隊長阿欽 😄', env);
         }
-      } catch(e) { await linePush(targetId, '查詢約騎資訊時出錯，請稍後再試 😅', env); }
+      } catch(e) { await reply( '查詢約騎資訊時出錯，請稍後再試 😅', env); }
       break;
     }
     case '6': {
       const sr = await braveSearch('2025年春季五大古典賽 米蘭聖雷莫 佛萊明赫亥特 巴黎魯貝 列日巴斯托涅 阿姆斯特爾 結果', env);
-      await linePush(targetId, await claudeSonnet('請回覆2025年3-4月春季五大古典賽最新賽況和冠軍，用娜美活潑風格，不超過150字', sr, env), env);
+      await reply( await claudeSonnet('請回覆2025年3-4月春季五大古典賽最新賽況和冠軍，用娜美活潑風格，不超過150字', sr, env), env);
       break;
     }
     case '7': {
       const sr = await braveSearch('2025 Giro d Italia 環義大賽 最新賽況 領騎', env);
-      await linePush(targetId, await claudeSonnet('請回覆2025年環義大賽Giro d\'Italia最新賽況，用娜美活潑風格，不超過150字', sr, env), env);
+      await reply( await claudeSonnet('請回覆2025年環義大賽Giro d\'Italia最新賽況，用娜美活潑風格，不超過150字', sr, env), env);
       break;
     }
     case '8': {
       const sr = await braveSearch('2025 環法前哨賽 Criterium Dauphine Tour Suisse 最新', env);
-      await linePush(targetId, await claudeSonnet('請回覆2025年6月環法前哨賽最新賽況，用娜美活潑風格，不超過150字', sr, env), env);
+      await reply( await claudeSonnet('請回覆2025年6月環法前哨賽最新賽況，用娜美活潑風格，不超過150字', sr, env), env);
       break;
     }
     case '9': {
       const sr = await braveSearch('2025 Tour de France 環法大賽 最新賽況 黃衫', env);
-      await linePush(targetId, await claudeSonnet('請回覆2025年環法大賽Tour de France最新賽況，用娜美活潑風格，不超過150字', sr, env), env);
+      await reply( await claudeSonnet('請回覆2025年環法大賽Tour de France最新賽況，用娜美活潑風格，不超過150字', sr, env), env);
       break;
     }
     case '10': {
       const sr = await braveSearch('2025 Vuelta Espana 環西 世界錦標賽 倫巴底環繞賽 最新', env);
-      await linePush(targetId, await claudeSonnet('請回覆2025年8-10月環西、世錦賽、倫巴底最新賽況，用娜美活潑風格，不超過150字', sr, env), env);
+      await reply( await claudeSonnet('請回覆2025年8-10月環西、世錦賽、倫巴底最新賽況，用娜美活潑風格，不超過150字', sr, env), env);
       break;
     }
     case '11': {
-      await linePush(targetId, '歡迎加入陽光車隊！🚴‍♀️\n\n新手資訊請找隊長阿欽 😄\n或直接 @娜美Nami 詢問\n\n陽光車隊歡迎你！❤️', env);
+      await reply( '歡迎加入陽光車隊！🚴‍♀️\n\n新手資訊請找隊長阿欽 😄\n或直接 @娜美Nami 詢問\n\n陽光車隊歡迎你！❤️', env);
       break;
     }
   }
@@ -320,7 +324,7 @@ async function handleKeywordReply(to, kw, userText, env, replyToken=null) {
   console.log('[DEBUG] handleKeywordReply called:', to, kw?.reply_type, kw?._numMatch);
   // 數字觸發特殊處理
   if (kw._numMatch && ['4','5','6','7','8','9','10','11'].includes(kw._numMatch)) {
-    await handleNumberKeyword(kw._numMatch, userText, to, env);
+    await handleNumberKeyword(kw._numMatch, userText, to, env, replyToken);
     return;
   }
   switch(kw.reply_type) {
@@ -818,7 +822,7 @@ export default {
         if (source.type === 'group') await saveGroupId(source.groupId, env);
 
         if (ev.type === 'join') {
-          await linePush(targetId, NAMI_INTRO, env);
+          await reply( NAMI_INTRO, env);
           continue;
         }
         if (ev.type !== 'message' || ev.message.type !== 'text') continue;
@@ -830,7 +834,7 @@ export default {
           const kw = await matchKeyword(text, keywords);
           if (mentioned || atNami) {
             const gs = await getGroupSettings(source.groupId, env);
-            if (gs.at_reply) await linePush(targetId, await smartReply(text, env), env);
+            if (gs.at_reply) await reply( await smartReply(text, env), env);
             continue;
           }
           if (!kw) continue;
