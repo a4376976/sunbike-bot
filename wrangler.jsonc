@@ -1,0 +1,42 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "sunbike-bot",
+  "main": "src/index.js",
+  "compatibility_date": "2026-05-05",
+  "observability": {
+    "enabled": true
+  },
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "triggers": {
+    "crons": [
+      "0 * * * *"
+    ]
+  },
+  "kv_namespaces": [
+    {
+      "binding": "SUNBIKE_KV",
+      "id": "1f802303c7dc4da5b1ad67f63e9d952e"
+    }
+  ],
+  "d1_databases": [
+    {
+      "binding": "SUNBIKE_DB",
+      "database_name": "sunbike-db",
+      "database_id": "9a860dc3-d297-4f66-9bcf-5314b728fc42"
+    }
+  ],
+  "routes": [
+    {
+      "pattern": "bot.jego3c.com/*",
+      "zone_name": "jego3c.com"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "SUNBIKE_R2",
+      "bucket_name": "sunbike"
+    }
+  ]
+}
