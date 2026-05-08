@@ -59,6 +59,26 @@ async function linePush(to, text, env) {
   });
 }
 
+async function lineReply(replyToken, messages, env) {
+  const res = await fetch('https://api.line.me/v2/bot/message/reply', {
+    method: 'POST',
+    headers: {'Authorization': `Bearer ${env.LINE_CHANNEL_ACCESS_TOKEN}`, 'Content-Type': 'application/json'},
+    body: JSON.stringify({replyToken, messages: Array.isArray(messages) ? messages : [{type:'text', text: messages}]})
+  });
+  const txt = await res.text();
+  console.log('[DEBUG] lineReply result:', res.status, txt);
+}
+
+async function lineReplyImage(replyToken, imageUrl, env) {
+  const res = await fetch('https://api.line.me/v2/bot/message/reply', {
+    method: 'POST',
+    headers: {'Authorization': `Bearer ${env.LINE_CHANNEL_ACCESS_TOKEN}`, 'Content-Type': 'application/json'},
+    body: JSON.stringify({replyToken, messages: [{type:'image', originalContentUrl: imageUrl, previewImageUrl: imageUrl}]})
+  });
+  const txt = await res.text();
+  console.log('[DEBUG] lineReplyImage result:', res.status, txt);
+}
+
 async function linePushImage(to, imageUrl, env) {
   const res = await fetch('https://api.line.me/v2/bot/message/push', {
     method: 'POST',
@@ -296,7 +316,7 @@ function isMentioned(mentionees) {
   return mentionees && mentionees.some(m => m.type === 'user');
 }
 
-async function handleKeywordReply(to, kw, userText, env) {
+async function handleKeywordReply(to, kw, userText, env, replyToken=null) {
   console.log('[DEBUG] handleKeywordReply called:', to, kw?.reply_type, kw?._numMatch);
   // 數字觸發特殊處理
   if (kw._numMatch && ['4','5','6','7','8','9','10','11'].includes(kw._numMatch)) {
@@ -305,16 +325,18 @@ async function handleKeywordReply(to, kw, userText, env) {
   }
   switch(kw.reply_type) {
     case 'claude': await linePush(to, await claudeHaiku(userText, env), env); break;
-    case 'text': await linePush(to, kw.reply_content || '娜美找不到資料 😅', env); break;
+    case 'text': if (replyToken) await lineReply(replyToken, kw.reply_content || '娜美找不到資料 😅', env); else await linePush(to, kw.reply_content || '娜美找不到資料 😅', env); break;
     case 'link': await linePush(to, kw.reply_content || '請參考網站', env); break;
     case 'r2_image':
       if (kw.reply_content === 'stickers/female' || kw.reply_content === 'stickers/male') {
         const num = String(Math.floor(Math.random() * 40) + 1).padStart(2, '0');
         const imgUrl = `${R2_BASE_URL}/${kw.reply_content}/${num}.png`;
         console.log('[DEBUG] r2_image url:', imgUrl);
-        await linePushImage(to, imgUrl, env);
+        if (replyToken) await lineReplyImage(replyToken, imgUrl, env);
+        else await linePushImage(to, imgUrl, env);
       } else {
-        await linePushImage(to, `${R2_BASE_URL}/${kw.reply_content}`, env);
+        if (replyToken) await lineReplyImage(replyToken, `${R2_BASE_URL}/${kw.reply_content}`, env);
+        else await linePushImage(to, `${R2_BASE_URL}/${kw.reply_content}`, env);
       }
       break;
     case 'r2_video':
@@ -814,13 +836,13 @@ export default {
           if (!kw) continue;
           const gs2 = await getGroupSettings(source.groupId, env);
           if (!gs2.keyword_reply) continue;
-          await handleKeywordReply(targetId, kw, text, env);
+          await handleKeywordReply(targetId, kw, text, env, ev.replyToken);
         } else {
           console.log('private msg:', text);
           const kw = await matchKeyword(text, keywords);
           console.log('kw match:', kw?.keyword, kw?._numMatch);
-          if (kw) await handleKeywordReply(targetId, kw, text, env);
-          else await linePush(targetId, await smartReply(text, env), env);
+          if (kw) await handleKeywordReply(targetId, kw, text, env, ev.replyToken);
+          else await lineReply(ev.replyToken, await smartReply(text, env), env);
         }
       }
     };
