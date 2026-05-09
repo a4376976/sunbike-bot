@@ -233,7 +233,7 @@ async function handleNumberKeyword(num, userText, targetId, env, replyToken=null
             if (r.notes) msg += `📝 ${r.notes}\n`;
             msg += '─────────────────\n';
           }
-          msg += '報名請找隊長阿欽 😄';
+          msg += (()=>{const c=getBotConfig(env);return `報名請找${c.contact_name||'隊長阿欽'} 😄`})();
           await reply( msg, env);
         } else {
           await reply( '目前沒有排定的約騎行程 🚴‍♀️\n有活動會提前公告，記得關注群組！\n報名找隊長阿欽 😄', env);
@@ -377,6 +377,13 @@ async function getMorningMessage(env) {
   } catch(e) { return `🌅 早安！騎車注意安全 🚴‍♀️`; }
 }
 
+async function getBotConfig(env) {
+  try {
+    const val = await env.SUNBIKE_KV.get('bot_config');
+    return val ? JSON.parse(val) : {contact_name:'隊長阿欽',bot_name:'娜美 Nami',fallback_msg:'這個要問隊長喔 😄',system_prompt_extra:''};
+  } catch(e) { return {contact_name:'隊長阿欽',bot_name:'娜美 Nami',fallback_msg:'這個要問隊長喔 😄',system_prompt_extra:''}; }
+}
+
 async function getDefaultHolidayMsg(mm, dd, env) {
   try {
     const row = await env.SUNBIKE_DB.prepare(
@@ -506,6 +513,12 @@ async function dashboardPage(env) {
       </td>
     </tr>`).join('');
 
+  const botCfgRaw = await env.SUNBIKE_KV.get('bot_config').catch(()=>null);
+  const botCfg = botCfgRaw ? JSON.parse(botCfgRaw) : {contact_name:'隊長阿欽',bot_name:'娜美 Nami',fallback_msg:'這個要問隊長喔 😄',system_prompt_extra:''};
+  const cfg_contact = botCfg.contact_name||'';
+  const cfg_botname = botCfg.bot_name||'';
+  const cfg_fallback = botCfg.fallback_msg||'';
+  const cfg_extra = botCfg.system_prompt_extra||'';
   const imgCards = (morningImgs.results||[]).map(img => `
     <div style="position:relative;text-align:center">
       <img src="${R2_BASE_URL}/${img.r2_path}" style="width:100%;height:90px;object-fit:cover;border-radius:8px;border:1px solid #e2e8f0">
@@ -690,6 +703,30 @@ ${imgCards}
 </div>
 
 </div>
+
+<div class="section">
+<h2>⚙️ Bot 設定</h2>
+<div style="display:grid;gap:16px;margin-top:12px">
+  <div>
+    <label style="font-weight:600;display:block;margin-bottom:6px">📞 報名聯絡人</label>
+    <input type="text" id="cfg_contact" value="${cfg_contact}" style="width:100%;max-width:300px">
+  </div>
+  <div>
+    <label style="font-weight:600;display:block;margin-bottom:6px">🤖 Bot 名稱</label>
+    <input type="text" id="cfg_botname" value="${cfg_botname}" style="width:100%;max-width:300px">
+  </div>
+  <div>
+    <label style="font-weight:600;display:block;margin-bottom:6px">💬 預設回覆（不知道時）</label>
+    <input type="text" id="cfg_fallback" value="${cfg_fallback}" style="width:100%">
+  </div>
+  <div>
+    <label style="font-weight:600;display:block;margin-bottom:6px">📝 額外人設（附加到 system prompt）</label>
+    <textarea id="cfg_extra" style="width:100%;min-height:80px">${cfg_extra}</textarea>
+  </div>
+  <button class="btn btn-primary" onclick="saveBotConfig()" style="max-width:160px">儲存設定</button>
+</div>
+</div>
+
 <div class="toast" id="toast"></div>
 <script>
 const TOK = '${ADMIN_PASSWORD}';
@@ -710,6 +747,16 @@ async function addEvent(){const d={event_date:document.getElementById('ev_date')
 async function addKw(){const d={keyword:document.getElementById('kw_keyword').value.trim(),reply_type:document.getElementById('kw_type').value,reply_content:document.getElementById('kw_content').value||null,description:document.getElementById('kw_desc').value.trim()};if(!d.keyword)return showToast('請輸入關鍵字',false);const res=await api('/api/keywords','POST',d);if(res.ok){showToast('新增成功！');location.reload()}else showToast('新增失敗: '+(res.error||''),false)}
 async function addRide(){const d={ride_date:document.getElementById('r_date').value,title:document.getElementById('r_title').value,meeting_place:document.getElementById('r_place').value,meet_time:document.getElementById('r_meet_time').value,start_time:document.getElementById('r_start_time').value,route:document.getElementById('r_route').value,notes:document.getElementById('r_notes').value};if(!d.ride_date||!d.meeting_place)return showToast('請填寫日期和集合地點',false);const res=await api('/api/rides','POST',d);if(res.ok){showToast('新增成功！');location.reload()}else showToast('新增失敗',false)}
 async function addMsg(){const message=document.getElementById('msg_text').value.trim();if(!message)return showToast('請輸入語錄',false);const res=await api('/api/messages','POST',{message});if(res.ok){showToast('新增成功！');location.reload()}}
+async function saveBotConfig(){
+  const cfg={
+    contact_name:document.getElementById('cfg_contact').value.trim(),
+    bot_name:document.getElementById('cfg_botname').value.trim(),
+    fallback_msg:document.getElementById('cfg_fallback').value.trim(),
+    system_prompt_extra:document.getElementById('cfg_extra').value.trim()
+  };
+  const res=await api('/api/bot-config','POST',cfg);
+  if(res.ok)showToast('設定已儲存！');else showToast('儲存失敗',false);
+}
 async function uploadMorningImg(){const f=document.getElementById('img_file').files[0];if(!f)return showToast('請選擇圖片',false);showToast('上傳中...');const fd=new FormData();fd.append('file',f);const r=await fetch('/api/morning-images',{method:'POST',headers:{'X-Admin-Token':TOK},body:fd});const res=await r.json();if(res.ok){showToast('上傳成功！');location.reload()}else showToast('上傳失敗',false)}
 async function delImg(id){if(!confirm('確定刪除此圖片？'))return;const res=await api('/api/morning-images','DELETE',{id});if(res.ok){showToast('已刪除');location.reload()}else showToast('刪除失敗',false)}
 async function addBday(){const name=document.getElementById('b_name').value.trim(),birthday=document.getElementById('b_date').value;if(!name||!birthday)return showToast('請填寫姓名和生日',false);const res=await api('/api/birthdays','POST',{name,birthday});if(res.ok){showToast('新增成功！');location.reload()}}
@@ -738,6 +785,11 @@ export default {
 
     const tok = request.headers.get('X-Admin-Token');
     if (tok === ADMIN_PASSWORD) {
+      if (path === '/api/bot-config' && method === 'POST') {
+        const cfg = await request.json();
+        await env.SUNBIKE_KV.put('bot_config', JSON.stringify(cfg));
+        return Response.json({ok:true});
+      }
       if (path === '/api/morning-images' && method === 'DELETE') {
         const { id } = await request.json();
         const img = await env.SUNBIKE_DB.prepare('SELECT r2_path FROM morning_images WHERE id=?').bind(id).first();
