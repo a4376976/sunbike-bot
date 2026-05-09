@@ -519,6 +519,7 @@ async function dashboardPage(env) {
   const cfg_botname = botCfg.bot_name||'';
   const cfg_fallback = botCfg.fallback_msg||'';
   const cfg_extra = botCfg.system_prompt_extra||'';
+  const morningImgOptions = (morningImgs.results||[]).map(img => `<option value="${img.r2_path}">${img.filename}</option>`).join('');
   const imgCards = (morningImgs.results||[]).map(img => `
     <div style="position:relative;text-align:center">
       <img src="${R2_BASE_URL}/${img.r2_path}" style="width:100%;height:90px;object-fit:cover;border-radius:8px;border:1px solid #e2e8f0">
@@ -543,7 +544,28 @@ async function dashboardPage(env) {
       <button class="btn-del" onclick="del('/api/keywords/${k.id}')">刪除</button>
     </td>
   </tr>`).join('');
-  const evRows = (events.results||[]).map(e => `<tr><td>${e.event_date}</td><td><span class="badge">${e.event_type}</span></td><td>${e.title}</td><td>${e.content_type}</td><td style="max-width:140px;word-break:break-all;font-size:.82rem">${e.content||'Claude生成'}</td><td>${e.pre_announce?'✅':'—'}</td><td><button class="btn-del" onclick="del('/api/events/${e.id}')">刪除</button></td></tr>`).join('');
+  const evRows = (events.results||[]).map(e => `<tr>
+    <td>${e.event_date}</td>
+    <td><span class="badge">${e.event_type}</span></td>
+    <td>${e.title}</td>
+    <td>${e.content_type}</td>
+    <td style="max-width:140px;word-break:break-all;font-size:.82rem">
+      <span id="ev-content-${e.id}">${e.content||'Claude生成'}</span>
+      <div id="ev-edit-${e.id}" style="display:none">
+        <select onchange="if(this.value){document.getElementById('ev-path-${e.id}').value=this.value}" style="width:100%;margin-bottom:4px;padding:4px;border:1px solid #ddd;border-radius:4px;font-size:.8rem">
+          <option value="">── 從圖庫選取 ──</option>
+          ${morningImgOptions}
+        </select>
+        <input id="ev-path-${e.id}" value="${e.content||''}" style="width:100%;border:1px solid #667eea;border-radius:4px;padding:4px;font-size:.82rem">
+      </div>
+    </td>
+    <td>${e.pre_announce?'✅':'—'}</td>
+    <td style="white-space:nowrap">
+      <button class="btn-edit" onclick="editEv(${e.id})">編輯</button>
+      <button class="btn-save" id="ev-save-${e.id}" style="display:none" onclick="saveEv(${e.id})">儲存</button>
+      <button class="btn-del" onclick="del('/api/events/${e.id}')">刪除</button>
+    </td>
+  </tr>`).join('');
   const groupOptions = (groupRows.results||[]).map(g => `<option value="${g.group_id}">${g.group_name||g.gi_name||'未命名'}</option>`).join('');
 
   const CSS = `*{box-sizing:border-box;margin:0;padding:0}body{font-family:-apple-system,sans-serif;background:#f5f7fa;color:#333}
@@ -613,7 +635,11 @@ td{padding:9px 10px;border-bottom:1px solid #f0f0f0;vertical-align:middle}tr:hov
   <div class="form-full" id="sp_text_area"><textarea id="sp_text" placeholder="推播文字內容"></textarea></div>
   <div class="form-full" id="sp_media_area" style="display:none">
     <div class="upload-area" onclick="document.getElementById('sp_file').click()">📁 點擊上傳圖片/影片到 R2<input type="file" id="sp_file" style="display:none" accept="image/*,video/mp4" onchange="uploadFile(this)"></div>
-    <input type="text" id="sp_media_path" placeholder="或輸入 R2 路徑 例: photos/morning.jpg" style="margin-bottom:8px">
+    <select id="sp_media_select" onchange="if(this.value){document.getElementById('sp_media_path').value=this.value}" style="width:100%;margin-bottom:8px;padding:8px;border:1px solid #ddd;border-radius:6px">
+  <option value="">── 從早安圖庫選取 ──</option>
+  ${morningImgOptions}
+</select>
+<input type="text" id="sp_media_path" placeholder="或輸入 R2 路徑 例: photos/morning.jpg" style="margin-bottom:8px">
     <textarea id="sp_caption" placeholder="附帶文字說明（選填）" style="min-height:50px"></textarea>
   </div>
   <div class="form-full" id="sp_sticker_area" style="display:none">
@@ -763,6 +789,16 @@ async function addEvent(){const d={event_date:document.getElementById('ev_date')
 async function addKw(){const d={keyword:document.getElementById('kw_keyword').value.trim(),reply_type:document.getElementById('kw_type').value,reply_content:document.getElementById('kw_content').value||null,description:document.getElementById('kw_desc').value.trim()};if(!d.keyword)return showToast('請輸入關鍵字',false);const res=await api('/api/keywords','POST',d);if(res.ok){showToast('新增成功！');location.reload()}else showToast('新增失敗: '+(res.error||''),false)}
 async function addRide(){const d={ride_date:document.getElementById('r_date').value,title:document.getElementById('r_title').value,meeting_place:document.getElementById('r_place').value,meet_time:document.getElementById('r_meet_time').value,start_time:document.getElementById('r_start_time').value,route:document.getElementById('r_route').value,notes:document.getElementById('r_notes').value};if(!d.ride_date||!d.meeting_place)return showToast('請填寫日期和集合地點',false);const res=await api('/api/rides','POST',d);if(res.ok){showToast('新增成功！');location.reload()}else showToast('新增失敗',false)}
 async function addMsg(){const message=document.getElementById('msg_text').value.trim();if(!message)return showToast('請輸入語錄',false);const res=await api('/api/messages','POST',{message});if(res.ok){showToast('新增成功！');location.reload()}}
+async function editEv(id){
+  document.getElementById('ev-content-'+id).style.display='none';
+  document.getElementById('ev-edit-'+id).style.display='block';
+  document.getElementById('ev-save-'+id).style.display='inline-block';
+}
+async function saveEv(id){
+  const content=document.getElementById('ev-path-'+id).value.trim();
+  const res=await api('/api/events/'+id,'PATCH',{content:content});
+  if(res.ok){showToast('已更新');location.reload()}else showToast('更新失敗',false);
+}
 async function editKw(id){
   document.getElementById('kw-content-'+id).style.display='none';
   document.getElementById('kw-edit-'+id).style.display='block';
@@ -887,6 +923,12 @@ export default {
           return Response.json({ok:true});
         } catch(e) { return Response.json({ok:false,error:e.message}); }
       }
+      if (path.startsWith('/api/events/') && method === 'PATCH') {
+        const id = path.split('/').pop();
+        const b = await request.json();
+        await env.SUNBIKE_DB.prepare('UPDATE special_events SET content=? WHERE id=?').bind(b.content||null, id).run();
+        return Response.json({ok:true});
+      }
       if (path.startsWith('/api/events/') && method === 'DELETE') {
         await env.SUNBIKE_DB.prepare('DELETE FROM special_events WHERE id=?').bind(path.split('/').pop()).run();
         return Response.json({ok:true});
@@ -1006,13 +1048,21 @@ export default {
     await processScheduledPush(twDate, twHour, groups, env);
 
     if (cron.morning?.enabled && twHour === Number(cron.morning.push_hour_tw)) {
-      const specialMsg = await getSpecialEventMsg(today, env);
-      const holidayMsg = !specialMsg ? await getDefaultHolidayMsg(mm, dd, env) : null;
-      const morningMsg = specialMsg || holidayMsg || await getMorningMessage(env);
-      const morningImg = await env.SUNBIKE_DB.prepare('SELECT r2_path FROM morning_images WHERE active=1 ORDER BY RANDOM() LIMIT 1').first();
+      const specialEv = await env.SUNBIKE_DB.prepare('SELECT * FROM special_events WHERE event_date=? AND enabled=1').bind(today).first();
+      let morningMsg, specialImgUrl = null;
+      if (specialEv && specialEv.content_type === 'r2_image') {
+        specialImgUrl = `${R2_BASE_URL}/${specialEv.content}`;
+        morningMsg = await claudeHaiku(`今天是${specialEv.title}！請用娜美的活潑風格，寫一則給陽光單車車隊的${specialEv.title}祝福，結合騎車主題，不超過100字。`, env);
+      } else {
+        const specialMsg = specialEv ? await getSpecialEventMsg(today, env) : null;
+        const holidayMsg = !specialMsg ? await getDefaultHolidayMsg(mm, dd, env) : null;
+        morningMsg = specialMsg || holidayMsg || await getMorningMessage(env);
+      }
+      const morningImg = specialImgUrl ? null : await env.SUNBIKE_DB.prepare('SELECT r2_path FROM morning_images WHERE active=1 ORDER BY RANDOM() LIMIT 1').first();
+      const finalImgUrl = specialImgUrl || (morningImg ? `${R2_BASE_URL}/${morningImg.r2_path}` : null);
       for (const g of groups) {
         if (!g.morning_push) continue;
-        if (morningImg) await linePushImageWithCaption(g.group_id, `${R2_BASE_URL}/${morningImg.r2_path}`, morningMsg, env);
+        if (finalImgUrl) await linePushImageWithCaption(g.group_id, finalImgUrl, morningMsg, env);
         else await linePush(g.group_id, morningMsg, env);
       }
       const bdays = await env.SUNBIKE_DB.prepare("SELECT name FROM member_birthdays WHERE strftime('%m-%d',birthday)=?").bind(`${mm}-${dd}`).all();
