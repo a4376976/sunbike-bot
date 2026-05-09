@@ -312,7 +312,7 @@ async function matchKeyword(text, keywords) {
     if (kw) return {...kw, _numMatch: num, _userText: trimmed};
   }
   // 一般關鍵字
-  for (const kw of keywords) { if (text.includes(kw.keyword)) return kw; }
+  for (const kw of keywords) { if (text.toLowerCase().includes(kw.keyword.toLowerCase())) return kw; }
   return null;
 }
 
@@ -526,7 +526,23 @@ async function dashboardPage(env) {
       <button onclick="delImg(${img.id})" style="position:absolute;top:2px;right:2px;background:rgba(0,0,0,.5);color:#fff;border:none;border-radius:50%;width:20px;height:20px;cursor:pointer;font-size:12px">×</button>
     </div>`).join('');
   const bdayRows = (bdays.results||[]).map(b => `<tr><td>${b.name}</td><td>${b.birthday}</td><td><button class="btn-del" onclick="del('/api/birthdays/${b.id}')">刪除</button></td></tr>`).join('');
-  const kwRows = (keywords.results||[]).map(k => `<tr><td>${k.keyword}</td><td><span class="badge">${k.reply_type}</span></td><td style="max-width:180px;word-break:break-all;font-size:.82rem">${k.reply_content||'—'}</td><td>${k.description||''}</td><td>${k.enabled?'✅':'❌'}</td><td><button class="btn-del" onclick="del('/api/keywords/${k.id}')">刪除</button></td></tr>`).join('');
+  const kwRows = (keywords.results||[]).map(k => `<tr>
+    <td>${k.keyword}</td>
+    <td><span class="badge">${k.reply_type}</span></td>
+    <td style="max-width:180px;word-break:break-all;font-size:.82rem">
+      <span id="kw-content-${k.id}">${k.reply_content||'—'}</span>
+      <textarea id="kw-edit-${k.id}" style="display:none;width:100%;min-height:60px;border:1px solid #667eea;border-radius:4px;padding:4px;font-size:.82rem">${k.reply_content||''}</textarea>
+    </td>
+    <td><span id="kw-desc-${k.id}">${k.description||''}</span>
+      <input id="kw-desc-edit-${k.id}" style="display:none;width:100%;border:1px solid #667eea;border-radius:4px;padding:4px" value="${k.description||''}">
+    </td>
+    <td>${k.enabled?'✅':'❌'}</td>
+    <td style="white-space:nowrap">
+      <button class="btn-edit" onclick="editKw(${k.id})">編輯</button>
+      <button class="btn-save" id="kw-save-${k.id}" style="display:none" onclick="saveKw(${k.id})">儲存</button>
+      <button class="btn-del" onclick="del('/api/keywords/${k.id}')">刪除</button>
+    </td>
+  </tr>`).join('');
   const evRows = (events.results||[]).map(e => `<tr><td>${e.event_date}</td><td><span class="badge">${e.event_type}</span></td><td>${e.title}</td><td>${e.content_type}</td><td style="max-width:140px;word-break:break-all;font-size:.82rem">${e.content||'Claude生成'}</td><td>${e.pre_announce?'✅':'—'}</td><td><button class="btn-del" onclick="del('/api/events/${e.id}')">刪除</button></td></tr>`).join('');
   const groupOptions = (groupRows.results||[]).map(g => `<option value="${g.group_id}">${g.group_name||g.gi_name||'未命名'}</option>`).join('');
 
@@ -747,6 +763,19 @@ async function addEvent(){const d={event_date:document.getElementById('ev_date')
 async function addKw(){const d={keyword:document.getElementById('kw_keyword').value.trim(),reply_type:document.getElementById('kw_type').value,reply_content:document.getElementById('kw_content').value||null,description:document.getElementById('kw_desc').value.trim()};if(!d.keyword)return showToast('請輸入關鍵字',false);const res=await api('/api/keywords','POST',d);if(res.ok){showToast('新增成功！');location.reload()}else showToast('新增失敗: '+(res.error||''),false)}
 async function addRide(){const d={ride_date:document.getElementById('r_date').value,title:document.getElementById('r_title').value,meeting_place:document.getElementById('r_place').value,meet_time:document.getElementById('r_meet_time').value,start_time:document.getElementById('r_start_time').value,route:document.getElementById('r_route').value,notes:document.getElementById('r_notes').value};if(!d.ride_date||!d.meeting_place)return showToast('請填寫日期和集合地點',false);const res=await api('/api/rides','POST',d);if(res.ok){showToast('新增成功！');location.reload()}else showToast('新增失敗',false)}
 async function addMsg(){const message=document.getElementById('msg_text').value.trim();if(!message)return showToast('請輸入語錄',false);const res=await api('/api/messages','POST',{message});if(res.ok){showToast('新增成功！');location.reload()}}
+async function editKw(id){
+  document.getElementById('kw-content-'+id).style.display='none';
+  document.getElementById('kw-edit-'+id).style.display='block';
+  document.getElementById('kw-desc-'+id).style.display='none';
+  document.getElementById('kw-desc-edit-'+id).style.display='block';
+  document.getElementById('kw-save-'+id).style.display='inline-block';
+}
+async function saveKw(id){
+  const content=document.getElementById('kw-edit-'+id).value.trim();
+  const desc=document.getElementById('kw-desc-edit-'+id).value.trim();
+  const res=await api('/api/keywords/'+id,'PATCH',{reply_content:content,description:desc});
+  if(res.ok){showToast('已更新');location.reload()}else showToast('更新失敗',false);
+}
 async function saveBotConfig(){
   const cfg={
     contact_name:document.getElementById('cfg_contact').value.trim(),
@@ -868,6 +897,12 @@ export default {
           await env.SUNBIKE_DB.prepare('INSERT INTO keywords (keyword,reply_type,reply_content,description) VALUES (?,?,?,?)').bind(b.keyword,b.reply_type,b.reply_content||null,b.description||null).run();
           return Response.json({ok:true});
         } catch(e) { return Response.json({ok:false,error:e.message}); }
+      }
+      if (path.startsWith('/api/keywords/') && method === 'PATCH') {
+        const id = path.split('/').pop();
+        const b = await request.json();
+        await env.SUNBIKE_DB.prepare('UPDATE keywords SET reply_content=?, description=? WHERE id=?').bind(b.reply_content, b.description, id).run();
+        return Response.json({ok:true});
       }
       if (path.startsWith('/api/keywords/') && method === 'DELETE') {
         await env.SUNBIKE_DB.prepare('DELETE FROM keywords WHERE id=?').bind(path.split('/').pop()).run();
