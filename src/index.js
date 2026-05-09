@@ -52,11 +52,13 @@ const NAMI_INTRO = `大家好！我是娜美 🚴‍♀️
 
 // ─── LINE API ─────────────────────────────────────────────
 async function linePush(to, text, env) {
-  await fetch('https://api.line.me/v2/bot/message/push', {
+  const res = await fetch('https://api.line.me/v2/bot/message/push', {
     method: 'POST',
     headers: {'Authorization': `Bearer ${env.LINE_CHANNEL_ACCESS_TOKEN}`, 'Content-Type': 'application/json'},
     body: JSON.stringify({to, messages: [{type: 'text', text}]})
   });
+  const txt = await res.text();
+  console.log('[DEBUG] linePush result:', res.status, txt.slice(0,100));
 }
 
 async function lineReply(replyToken, messages, env) {
@@ -513,6 +515,12 @@ async function dashboardPage(env) {
       </td>
     </tr>`).join('');
 
+  const quotaRes = await fetch('https://api.line.me/v2/bot/message/quota', {headers:{'Authorization':`Bearer ${env.LINE_CHANNEL_ACCESS_TOKEN}`}}).then(r=>r.json()).catch(()=>({value:0}));
+  const consumeRes = await fetch('https://api.line.me/v2/bot/message/quota/consumption', {headers:{'Authorization':`Bearer ${env.LINE_CHANNEL_ACCESS_TOKEN}`}}).then(r=>r.json()).catch(()=>({totalUsage:0}));
+  const quotaMax = quotaRes.value || 0;
+  const quotaUsed = consumeRes.totalUsage || 0;
+  const quotaLeft = quotaMax - quotaUsed;
+  const quotaColor = quotaLeft <= 20 ? '#e53e3e' : quotaLeft <= 50 ? '#dd6b20' : '#38a169';
   const botCfgRaw = await env.SUNBIKE_KV.get('bot_config').catch(()=>null);
   const botCfg = botCfgRaw ? JSON.parse(botCfgRaw) : {contact_name:'隊長阿欽',bot_name:'娜美 Nami',fallback_msg:'這個要問隊長喔 😄',system_prompt_extra:''};
   const cfg_contact = botCfg.contact_name||'';
@@ -597,6 +605,30 @@ td{padding:9px 10px;border-bottom:1px solid #f0f0f0;vertical-align:middle}tr:hov
   return `<!DOCTYPE html><html lang="zh-TW"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>娜美管理後台</title><style>${CSS}</style></head><body>
 <div class="header"><h1>🚴‍♀️ 娜美管理後台 v6</h1><a href="/admin/logout" class="logout">登出</a></div>
 <div class="container">
+
+<div class="section">
+<h2>📊 LINE Push 額度</h2>
+<div style="display:flex;align-items:center;gap:24px;flex-wrap:wrap">
+  <div style="text-align:center">
+    <div style="font-size:2rem;font-weight:700;color:${quotaColor}">${quotaLeft}</div>
+    <div style="font-size:.85rem;color:#666">剩餘則數</div>
+  </div>
+  <div style="text-align:center">
+    <div style="font-size:2rem;font-weight:700;color:#667eea">${quotaUsed}</div>
+    <div style="font-size:.85rem;color:#666">已使用</div>
+  </div>
+  <div style="text-align:center">
+    <div style="font-size:2rem;font-weight:700;color:#888">${quotaMax}</div>
+    <div style="font-size:.85rem;color:#666">月上限</div>
+  </div>
+  <div style="flex:1;min-width:200px">
+    <div style="background:#e2e8f0;border-radius:8px;height:12px;overflow:hidden">
+      <div style="background:${quotaColor};height:100%;width:${Math.min(100,Math.round(quotaUsed/quotaMax*100))}%;transition:.3s"></div>
+    </div>
+    <div style="font-size:.8rem;color:#666;margin-top:4px">每月1日重置</div>
+  </div>
+</div>
+</div>
 
 <div class="section">
 <h2>💬 群組管理</h2>
@@ -850,6 +882,27 @@ export default {
 
     const tok = request.headers.get('X-Admin-Token');
     if (tok === ADMIN_PASSWORD) {
+      if (path === '/api/quota' && method === 'GET') {
+        const q = await fetch('https://api.line.me/v2/bot/message/quota', {
+          headers: {'Authorization': `Bearer ${env.LINE_CHANNEL_ACCESS_TOKEN}`}
+        });
+        const c = await fetch('https://api.line.me/v2/bot/message/quota/consumption', {
+          headers: {'Authorization': `Bearer ${env.LINE_CHANNEL_ACCESS_TOKEN}`}
+        });
+        const qj = await q.json();
+        const cj = await c.json();
+        return Response.json({quota: qj, consumption: cj});
+      }
+      if (path === '/api/test-push' && method === 'POST') {
+        const b = await request.json();
+        const res = await fetch('https://api.line.me/v2/bot/message/push', {
+          method: 'POST',
+          headers: {'Authorization': `Bearer ${env.LINE_CHANNEL_ACCESS_TOKEN}`, 'Content-Type': 'application/json'},
+          body: JSON.stringify({to: b.group_id, messages: [{type:'text', text:'🧪 娜美測試推播！時間：' + new Date().toISOString()}]})
+        });
+        const txt = await res.text();
+        return Response.json({ok: res.ok, status: res.status, body: txt});
+      }
       if (path === '/api/bot-config' && method === 'POST') {
         const cfg = await request.json();
         await env.SUNBIKE_KV.put('bot_config', JSON.stringify(cfg));
