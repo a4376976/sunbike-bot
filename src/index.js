@@ -1032,6 +1032,7 @@ export default {
   },
 
   async scheduled(event, env, ctx) {
+    console.log('=== SCHEDULED START ===', new Date().toISOString());
     const twNow = new Date();
     const twDate = new Date(twNow.getTime() + 8*3600000);
     const twHour = twDate.getUTCHours();
@@ -1088,11 +1089,14 @@ export default {
       }
     }
 
+    console.log('event_pre check:', cron.event_pre?.enabled, twHour, Number(cron.event_pre?.push_hour_tw), tomorrow);
     if (cron.event_pre?.enabled && twHour === Number(cron.event_pre.push_hour_tw)) {
       const ev = await env.SUNBIKE_DB.prepare('SELECT * FROM special_events WHERE event_date=? AND pre_announce=1 AND enabled=1').bind(tomorrow).first();
+      console.log('event_pre ev:', ev?.title, 'groups:', groups.length);
       if (ev) {
         const preMsg = await claudeHaiku(`明天是${ev.title}！請用娜美的活潑風格，寫一則給陽光單車車隊的明天${ev.title}預告，結合騎車主題，不超過80字。`, env);
-        if (preMsg) for (const g of groups) { if (g.event_push) await linePush(g.group_id, preMsg, env); }
+        console.log('event_pre preMsg:', preMsg?.slice(0,30));
+        if (preMsg) for (const g of groups) { console.log('sending to:', g.group_id, g.event_push); await linePush(g.group_id, preMsg, env); }
       }
     }
   }
