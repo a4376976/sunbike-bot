@@ -433,7 +433,7 @@ ${error ? `<p class="error">${error}</p>` : ''}
 }
 
 async function dashboardPage(env) {
-  const [rides, msgs, bdays, keywords, events, cronRows, groupRows, schedules] = await Promise.all([
+  const [rides, msgs, bdays, keywords, events, cronRows, groupRows, schedules, morningImgs] = await Promise.all([
     env.SUNBIKE_DB.prepare('SELECT * FROM ride_schedule ORDER BY ride_date DESC LIMIT 20').all(),
     env.SUNBIKE_DB.prepare('SELECT * FROM morning_messages ORDER BY id DESC LIMIT 30').all(),
     env.SUNBIKE_DB.prepare('SELECT * FROM member_birthdays ORDER BY birthday').all(),
@@ -442,6 +442,7 @@ async function dashboardPage(env) {
     env.SUNBIKE_DB.prepare('SELECT * FROM cron_settings ORDER BY id').all(),
     env.SUNBIKE_DB.prepare('SELECT gs.*, gi.group_name as gi_name, gi.created_at as joined_at FROM group_settings gs LEFT JOIN group_ids gi ON gs.group_id = gi.group_id').all(),
     env.SUNBIKE_DB.prepare("SELECT * FROM scheduled_push ORDER BY push_date DESC, push_hour DESC LIMIT 30").all(),
+    env.SUNBIKE_DB.prepare("SELECT * FROM morning_images WHERE active=1 ORDER BY id DESC").all(),
   ]);
 
   const toggle = (id, field, val) => `<input type="checkbox" ${val?'checked':''} onchange="toggleGroup('${id}','${field}',this.checked)" style="width:18px;height:18px;cursor:pointer">`;
@@ -496,6 +497,12 @@ async function dashboardPage(env) {
       </td>
     </tr>`).join('');
 
+  const imgCards = (morningImgs.results||[]).map(img => `
+    <div style="position:relative;text-align:center">
+      <img src="${R2_BASE_URL}/${img.r2_path}" style="width:100%;height:90px;object-fit:cover;border-radius:8px;border:1px solid #e2e8f0">
+      <div style="font-size:.7rem;color:#666;margin-top:4px">${img.filename}</div>
+      <button onclick="delImg(${img.id})" style="position:absolute;top:2px;right:2px;background:rgba(0,0,0,.5);color:#fff;border:none;border-radius:50%;width:20px;height:20px;cursor:pointer;font-size:12px">×</button>
+    </div>`).join('');
   const bdayRows = (bdays.results||[]).map(b => `<tr><td>${b.name}</td><td>${b.birthday}</td><td><button class="btn-del" onclick="del('/api/birthdays/${b.id}')">刪除</button></td></tr>`).join('');
   const kwRows = (keywords.results||[]).map(k => `<tr><td>${k.keyword}</td><td><span class="badge">${k.reply_type}</span></td><td style="max-width:180px;word-break:break-all;font-size:.82rem">${k.reply_content||'—'}</td><td>${k.description||''}</td><td>${k.enabled?'✅':'❌'}</td><td><button class="btn-del" onclick="del('/api/keywords/${k.id}')">刪除</button></td></tr>`).join('');
   const evRows = (events.results||[]).map(e => `<tr><td>${e.event_date}</td><td><span class="badge">${e.event_type}</span></td><td>${e.title}</td><td>${e.content_type}</td><td style="max-width:140px;word-break:break-all;font-size:.82rem">${e.content||'Claude生成'}</td><td>${e.pre_announce?'✅':'—'}</td><td><button class="btn-del" onclick="del('/api/events/${e.id}')">刪除</button></td></tr>`).join('');
@@ -644,6 +651,17 @@ td{padding:9px 10px;border-bottom:1px solid #f0f0f0;vertical-align:middle}tr:hov
 </div>
 
 <div class="section">
+<h2>🖼️ 早安圖庫</h2>
+<div style="display:flex;gap:12px;margin-bottom:16px;align-items:center">
+  <input type="file" id="img_file" accept="image/*" style="flex:1">
+  <button class="btn btn-primary" onclick="uploadMorningImg()">上傳早安圖</button>
+</div>
+<div id="img_grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:12px;margin-top:12px">
+${imgCards}
+</div>
+</div>
+
+<div class="section">
 <h2>🌅 早安語錄</h2>
 <div style="display:flex;gap:12px;margin-bottom:16px">
   <textarea id="msg_text" placeholder="輸入娜美風格早安語錄..." style="flex:1;min-height:70px"></textarea>
@@ -683,6 +701,8 @@ async function addEvent(){const d={event_date:document.getElementById('ev_date')
 async function addKw(){const d={keyword:document.getElementById('kw_keyword').value.trim(),reply_type:document.getElementById('kw_type').value,reply_content:document.getElementById('kw_content').value||null,description:document.getElementById('kw_desc').value.trim()};if(!d.keyword)return showToast('請輸入關鍵字',false);const res=await api('/api/keywords','POST',d);if(res.ok){showToast('新增成功！');location.reload()}else showToast('新增失敗: '+(res.error||''),false)}
 async function addRide(){const d={ride_date:document.getElementById('r_date').value,title:document.getElementById('r_title').value,meeting_place:document.getElementById('r_place').value,meet_time:document.getElementById('r_meet_time').value,start_time:document.getElementById('r_start_time').value,route:document.getElementById('r_route').value,notes:document.getElementById('r_notes').value};if(!d.ride_date||!d.meeting_place)return showToast('請填寫日期和集合地點',false);const res=await api('/api/rides','POST',d);if(res.ok){showToast('新增成功！');location.reload()}else showToast('新增失敗',false)}
 async function addMsg(){const message=document.getElementById('msg_text').value.trim();if(!message)return showToast('請輸入語錄',false);const res=await api('/api/messages','POST',{message});if(res.ok){showToast('新增成功！');location.reload()}}
+async function uploadMorningImg(){const f=document.getElementById('img_file').files[0];if(!f)return showToast('請選擇圖片',false);showToast('上傳中...');const fd=new FormData();fd.append('file',f);const r=await fetch('/api/morning-images',{method:'POST',headers:{'X-Admin-Token':TOK},body:fd});const res=await r.json();if(res.ok){showToast('上傳成功！');location.reload()}else showToast('上傳失敗',false)}
+async function delImg(id){if(!confirm('確定刪除此圖片？'))return;const res=await api('/api/morning-images','DELETE',{id});if(res.ok){showToast('已刪除');location.reload()}else showToast('刪除失敗',false)}
 async function addBday(){const name=document.getElementById('b_name').value.trim(),birthday=document.getElementById('b_date').value;if(!name||!birthday)return showToast('請填寫姓名和生日',false);const res=await api('/api/birthdays','POST',{name,birthday});if(res.ok){showToast('新增成功！');location.reload()}}
 </script></body></html>`;
 }
@@ -709,6 +729,25 @@ export default {
 
     const tok = request.headers.get('X-Admin-Token');
     if (tok === ADMIN_PASSWORD) {
+      if (path === '/api/morning-images' && method === 'DELETE') {
+        const { id } = await request.json();
+        const img = await env.SUNBIKE_DB.prepare('SELECT r2_path FROM morning_images WHERE id=?').bind(id).first();
+        if (img) {
+          await env.SUNBIKE_R2.delete(img.r2_path);
+          await env.SUNBIKE_DB.prepare('DELETE FROM morning_images WHERE id=?').bind(id).run();
+        }
+        return Response.json({ok:true});
+      }
+      if (path === '/api/morning-images' && method === 'POST') {
+        const fd = await request.formData();
+        const file = fd.get('file');
+        if (!file) return Response.json({ok:false,error:'no file'});
+        const filename = file.name.replace(/[^\u4e00-\u9fff\u3400-\u4dbfa-zA-Z0-9._-]/g,'_');
+        const r2path = 'morning/' + Date.now() + '_' + filename;
+        await env.SUNBIKE_R2.put(r2path, file.stream(), {httpMetadata:{contentType:file.type}});
+        await env.SUNBIKE_DB.prepare('INSERT INTO morning_images (filename,r2_path) VALUES (?,?)').bind(filename, r2path).run();
+        return Response.json({ok:true, path:r2path});
+      }
       if (path === '/api/upload' && method === 'POST') {
         try {
           const formData = await request.formData();
@@ -873,7 +912,12 @@ export default {
     if (cron.morning?.enabled && twHour === Number(cron.morning.push_hour_tw)) {
       const specialMsg = await getSpecialEventMsg(today, env);
       const morningMsg = specialMsg || await getMorningMessage(env);
-      for (const g of groups) { if (g.morning_push) await linePush(g.group_id, morningMsg, env); }
+      const morningImg = await env.SUNBIKE_DB.prepare('SELECT r2_path FROM morning_images WHERE active=1 ORDER BY RANDOM() LIMIT 1').first();
+      for (const g of groups) {
+        if (!g.morning_push) continue;
+        if (morningImg) await linePushImageWithCaption(g.group_id, `${R2_BASE_URL}/${morningImg.r2_path}`, morningMsg, env);
+        else await linePush(g.group_id, morningMsg, env);
+      }
       const bdays = await env.SUNBIKE_DB.prepare("SELECT name FROM member_birthdays WHERE strftime('%m-%d',birthday)=?").bind(`${mm}-${dd}`).all();
       for (const b of (bdays.results||[])) {
         const bdayMsg = `🎂 今天是 ${b.name} 的生日！\n陽光車隊全體祝你生日快樂！🎉\n願你騎得越來越快 🚴‍♀️❤️`;
