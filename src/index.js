@@ -328,9 +328,9 @@ async function handleKeywordReply(to, kw, userText, env, replyToken=null) {
     return;
   }
   switch(kw.reply_type) {
-    case 'claude': await linePush(to, await claudeHaiku(userText, env), env); break;
+    case 'claude': if (replyToken) await lineReply(replyToken, await claudeHaiku(userText, env), env); else await linePush(to, await claudeHaiku(userText, env), env); break;
     case 'text': if (replyToken) await lineReply(replyToken, kw.reply_content || '娜美找不到資料 😅', env); else await linePush(to, kw.reply_content || '娜美找不到資料 😅', env); break;
-    case 'link': await linePush(to, kw.reply_content || '請參考網站', env); break;
+    case 'link': if (replyToken) await lineReply(replyToken, kw.reply_content || '請參考網站', env); else await linePush(to, kw.reply_content || '請參考網站', env); break;
     case 'r2_image':
       if (kw.reply_content === 'stickers/female' || kw.reply_content === 'stickers/male') {
         const num = String(Math.floor(Math.random() * 40) + 1).padStart(2, '0');
@@ -349,7 +349,7 @@ async function handleKeywordReply(to, kw, userText, env, replyToken=null) {
     case 'sticker':
       const sp = (kw.reply_content || '11537:52002734').split(':');
       await linePushSticker(to, sp[0], sp[1], env); break;
-    default: await linePush(to, await claudeHaiku(userText, env), env);
+    default: if (replyToken) await lineReply(replyToken, await claudeHaiku(userText, env), env); else await linePush(to, await claudeHaiku(userText, env), env);
   }
 }
 
@@ -834,7 +834,7 @@ export default {
           const kw = await matchKeyword(text, keywords);
           if (mentioned || atNami) {
             const gs = await getGroupSettings(source.groupId, env);
-            if (gs.at_reply) await reply( await smartReply(text, env), env);
+            if (gs.at_reply) await lineReply(ev.replyToken, await smartReply(text, env), env);
             continue;
           }
           if (!kw) continue;
