@@ -377,6 +377,15 @@ async function getMorningMessage(env) {
   } catch(e) { return `🌅 早安！騎車注意安全 🚴‍♀️`; }
 }
 
+async function getDefaultHolidayMsg(mm, dd, env) {
+  try {
+    const row = await env.SUNBIKE_DB.prepare(
+      'SELECT message FROM default_holidays WHERE month=? AND day=? AND enabled=1'
+    ).bind(parseInt(mm), parseInt(dd)).first();
+    return row ? row.message : null;
+  } catch(e) { return null; }
+}
+
 async function getSpecialEventMsg(dateStr, env) {
   try {
     const ev = await env.SUNBIKE_DB.prepare('SELECT * FROM special_events WHERE event_date = ? AND enabled = 1').bind(dateStr).first();
@@ -911,7 +920,8 @@ export default {
 
     if (cron.morning?.enabled && twHour === Number(cron.morning.push_hour_tw)) {
       const specialMsg = await getSpecialEventMsg(today, env);
-      const morningMsg = specialMsg || await getMorningMessage(env);
+      const holidayMsg = !specialMsg ? await getDefaultHolidayMsg(mm, dd, env) : null;
+      const morningMsg = specialMsg || holidayMsg || await getMorningMessage(env);
       const morningImg = await env.SUNBIKE_DB.prepare('SELECT r2_path FROM morning_images WHERE active=1 ORDER BY RANDOM() LIMIT 1').first();
       for (const g of groups) {
         if (!g.morning_push) continue;
