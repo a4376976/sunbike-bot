@@ -1173,7 +1173,16 @@ export default {
       if (ev) {
         const preMsg = await claudeHaiku(`明天是${ev.title}！請用娜美的活潑風格，寫一則給陽光單車車隊的明天${ev.title}預告，結合騎車主題，不超過80字。`, env);
         console.log('event_pre preMsg:', preMsg?.slice(0,30));
-        if (preMsg) for (const g of groups) { console.log('sending to:', g.group_id, g.event_push); await linePush(g.group_id, preMsg, env); }
+        if (preMsg) {
+          const preImgUrl = ev.content_type === 'r2_image' && ev.content
+            ? `${R2_BASE_URL}/${ev.content.split('/').map(s=>encodeURIComponent(s)).join('/')}`
+            : null;
+          for (const g of groups) {
+            if (!g.event_push) continue;
+            if (preImgUrl) await linePushImageWithCaption(g.group_id, preImgUrl, preMsg, env);
+            else await linePush(g.group_id, preMsg, env);
+          }
+        }
       }
     }
   }
