@@ -341,8 +341,9 @@ async function handleKeywordReply(to, kw, userText, env, replyToken=null) {
         if (replyToken) await lineReplyImage(replyToken, imgUrl, env);
         else await linePushImage(to, imgUrl, env);
       } else {
-        if (replyToken) await lineReplyImage(replyToken, `${R2_BASE_URL}/${kw.reply_content}`, env);
-        else await linePushImage(to, `${R2_BASE_URL}/${kw.reply_content}`, env);
+        const encUrl = `${R2_BASE_URL}/${kw.reply_content.split('/').map(s=>encodeURIComponent(s)).join('/')}`;
+        if (replyToken) await lineReplyImage(replyToken, encUrl, env);
+        else await linePushImage(to, encUrl, env);
       }
       break;
     case 'r2_video':
@@ -921,10 +922,11 @@ export default {
         const fd = await request.formData();
         const file = fd.get('file');
         if (!file) return Response.json({ok:false,error:'no file'});
-        const filename = file.name.replace(/[^\u4e00-\u9fff\u3400-\u4dbfa-zA-Z0-9._-]/g,'_');
-        const r2path = 'morning/' + Date.now() + '_' + filename;
+        const displayName = file.name;
+        const ext = file.name.split('.').pop().toLowerCase();
+        const r2path = 'morning/' + Date.now() + '.' + ext;
         await env.SUNBIKE_R2.put(r2path, file.stream(), {httpMetadata:{contentType:file.type}});
-        await env.SUNBIKE_DB.prepare('INSERT INTO morning_images (filename,r2_path) VALUES (?,?)').bind(filename, r2path).run();
+        await env.SUNBIKE_DB.prepare('INSERT INTO morning_images (filename,r2_path) VALUES (?,?)').bind(displayName, r2path).run();
         return Response.json({ok:true, path:r2path});
       }
       if (path === '/api/upload' && method === 'POST') {
