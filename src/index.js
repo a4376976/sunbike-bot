@@ -615,11 +615,11 @@ td{padding:9px 10px;border-bottom:1px solid #f0f0f0;vertical-align:middle}tr:hov
 <h2>📊 LINE Push 額度</h2>
 <div style="display:flex;align-items:center;gap:24px;flex-wrap:wrap">
   <div style="text-align:center">
-    <div style="font-size:2rem;font-weight:700;color:${quotaColor}">${quotaLeft}</div>
+    <div style="font-size:2rem;font-weight:700;color:${quotaColor}" id="quota-left">${quotaLeft}</div>
     <div style="font-size:.85rem;color:#666">剩餘則數</div>
   </div>
   <div style="text-align:center">
-    <div style="font-size:2rem;font-weight:700;color:#667eea">${quotaUsed}</div>
+    <div style="font-size:2rem;font-weight:700;color:#667eea" id="quota-used">${quotaUsed}</div>
     <div style="font-size:.85rem;color:#666">已使用</div>
   </div>
   <div style="text-align:center">
@@ -631,6 +631,7 @@ td{padding:9px 10px;border-bottom:1px solid #f0f0f0;vertical-align:middle}tr:hov
       <div style="background:${quotaColor};height:100%;width:${Math.min(100,Math.round(quotaUsed/quotaMax*100))}%;transition:.3s"></div>
     </div>
     <div style="font-size:.8rem;color:#666;margin-top:4px">每月1日重置</div>
+  <button onclick="refreshQuota()" style="margin-top:8px;padding:4px 12px;background:#667eea;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:.82rem">🔄 重新整理</button>
   </div>
 </div>
 </div>
@@ -850,6 +851,21 @@ async function saveKw(id){
   const desc=document.getElementById('kw-desc-edit-'+id).value.trim();
   const res=await api('/api/keywords/'+id,'PATCH',{reply_content:content,description:desc});
   if(res.ok){showToast('已更新');location.reload()}else showToast('更新失敗',false);
+}
+async function refreshQuota(){
+  const res = await api('/api/quota','GET');
+  if(res.quota){
+    const max=res.quota.value||0;
+    const used=res.consumption?.totalUsage||0;
+    const left=max-used;
+    const color=left<=20?'#e53e3e':left<=50?'#dd6b20':'#38a169';
+    document.querySelectorAll('[id^="quota-"]').forEach(el=>{
+      if(el.id==='quota-left'){el.textContent=left;el.style.color=color;}
+      if(el.id==='quota-used'){el.textContent=used;}
+      if(el.id==='quota-max'){el.textContent=max;}
+    });
+    showToast('額度已更新');
+  }
 }
 async function saveBotConfig(){
   const cfg={
