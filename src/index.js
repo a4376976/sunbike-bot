@@ -541,6 +541,10 @@ async function dashboardPage(env) {
     <td><span class="badge">${k.reply_type}</span></td>
     <td style="max-width:180px;word-break:break-all;font-size:.82rem">
       <span id="kw-content-${k.id}">${k.reply_content||'—'}</span>
+      ${k.reply_type==='r2_image' ? `<select id="kw-gallery-${k.id}" style="display:none;width:100%;margin-bottom:4px;padding:4px;border:1px solid #ddd;border-radius:4px;font-size:.82rem" onchange="if(this.value){document.getElementById('kw-edit-${k.id}').value=this.value}">
+        <option value="">── 從圖庫選取 ──</option>
+        ${morningImgOptions}
+      </select>` : ''}
       <textarea id="kw-edit-${k.id}" style="display:none;width:100%;min-height:60px;border:1px solid #667eea;border-radius:4px;padding:4px;font-size:.82rem">${k.reply_content||''}</textarea>
     </td>
     <td><span id="kw-desc-${k.id}">${k.description||''}</span>
@@ -835,6 +839,8 @@ async function saveEv(id){
 async function editKw(id){
   document.getElementById('kw-content-'+id).style.display='none';
   document.getElementById('kw-edit-'+id).style.display='block';
+  const gallery=document.getElementById('kw-gallery-'+id);
+  if(gallery) gallery.style.display='block';
   document.getElementById('kw-desc-'+id).style.display='none';
   document.getElementById('kw-desc-edit-'+id).style.display='block';
   document.getElementById('kw-save-'+id).style.display='inline-block';
