@@ -203,7 +203,7 @@ async function smartReply(text, env) {
 async function handleNumberKeyword(num, userText, targetId, env, replyToken=null) {
   const reply = async (msg) => {
     if (replyToken) { await lineReply(replyToken, msg, env); replyToken = null; }
-    else await reply( msg, env);
+    else await linePush(targetId, msg, env);
   };
   const trimmed = userText.trim();
   switch(num) {
@@ -440,15 +440,37 @@ async function processScheduledPush(twDate, twHour, groups, env) {
 // ─── ADMIN ────────────────────────────────────────────────
 function loginPage(error = '') {
   return `<!DOCTYPE html><html lang="zh-TW"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>娜美管理後台</title>
-<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:-apple-system,sans-serif;background:linear-gradient(135deg,#667eea,#764ba2);min-height:100vh;display:flex;align-items:center;justify-content:center}
-.card{background:#fff;border-radius:16px;padding:40px;width:320px;box-shadow:0 20px 60px rgba(0,0,0,.3)}h1{text-align:center;font-size:1.5rem;margin-bottom:8px;color:#333}
-.sub{text-align:center;color:#888;font-size:.9rem;margin-bottom:24px}input{width:100%;padding:12px 16px;border:2px solid #e0e0e0;border-radius:8px;font-size:1rem;margin-bottom:16px;outline:none}
-input:focus{border-color:#667eea}button{width:100%;padding:12px;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;border:none;border-radius:8px;font-size:1rem;cursor:pointer;font-weight:600}
-.error{color:#e53e3e;text-align:center;margin-bottom:16px;font-size:.9rem}</style></head><body>
-<div class="card"><h1>🚴‍♀️ 娜美後台</h1><p class="sub">陽光單車管理系統</p>
-${error ? `<p class="error">${error}</p>` : ''}
-<form method="POST" action="/admin/login"><input type="password" name="password" placeholder="請輸入管理密碼" autofocus><button type="submit">登入</button></form>
-</div></body></html>`;
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Helvetica Neue',sans-serif;background:#111;min-height:100vh;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden}
+body::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse 80% 60% at 50% 40%,rgba(255,214,0,.15) 0%,transparent 70%)}
+.card{background:#1a1a1a;border:1px solid rgba(255,214,0,.2);border-radius:20px;padding:48px 40px;width:360px;box-shadow:0 0 80px rgba(255,214,0,.08);position:relative;z-index:1}
+.logo{text-align:center;margin-bottom:32px}
+.logo-icon{width:64px;height:64px;background:#FFD600;border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:2rem;margin:0 auto 16px}
+h1{color:#FFD600;font-size:1.4rem;font-weight:700;letter-spacing:-.5px}
+.sub{color:#666;font-size:.85rem;margin-top:4px}
+.field{margin-bottom:16px}
+label{display:block;color:#888;font-size:.78rem;font-weight:600;letter-spacing:.05em;text-transform:uppercase;margin-bottom:8px}
+input[type=password]{width:100%;padding:13px 16px;background:#222;border:1.5px solid #333;border-radius:10px;font-size:.95rem;color:#fff;outline:none;transition:.2s}
+input[type=password]:focus{border-color:#FFD600;background:#242424}
+button{width:100%;padding:14px;background:#FFD600;color:#111;border:none;border-radius:10px;font-size:.95rem;font-weight:700;cursor:pointer;letter-spacing:.02em;transition:.15s;margin-top:4px}
+button:hover{background:#ffe033;transform:translateY(-1px)}
+button:active{transform:translateY(0)}
+.error{color:#ff6b6b;text-align:center;margin-bottom:16px;font-size:.85rem;padding:10px;background:rgba(255,107,107,.1);border-radius:8px}
+</style></head><body>
+<div class="card">
+  <div class="logo">
+    <div class="logo-icon">🚴‍♀️</div>
+    <h1>陽光單車後台</h1>
+    <p class="sub">Sunbike Bot Admin v7</p>
+  </div>
+  ${error ? `<p class="error">${error}</p>` : ''}
+  <form method="POST" action="/admin/login">
+    <div class="field"><label>管理密碼</label><input type="password" name="password" placeholder="輸入密碼登入" autofocus></div>
+    <button type="submit">登入後台 →</button>
+  </form>
+</div>
+</body></html>`;
 }
 
 async function dashboardPage(env) {
@@ -464,14 +486,14 @@ async function dashboardPage(env) {
     env.SUNBIKE_DB.prepare("SELECT * FROM morning_images WHERE active=1 ORDER BY id DESC").all(),
   ]);
 
-  const toggle = (id, field, val) => `<input type="checkbox" ${val?'checked':''} onchange="toggleGroup('${id}','${field}',this.checked)" style="width:18px;height:18px;cursor:pointer">`;
+  const toggle = (id, field, val) => `<input type="checkbox" ${val?'checked':''} onchange="toggleGroup('${id}','${field}',this.checked)" style="width:18px;height:18px;cursor:pointer;accent-color:#FFD600">`;
 
   const groupSettingRows = (groupRows.results||[]).map(g => {
     const joinedAt = g.joined_at ? g.joined_at.slice(0,16).replace('T',' ') : '—';
     return `<tr>
-      <td><input type="text" value="${g.group_name||g.gi_name||'未命名'}" onblur="updateGroupName('${g.group_id}',this.value)" style="border:1px solid #ddd;border-radius:4px;padding:4px 8px;width:100px"></td>
+      <td><input type="text" value="${g.group_name||g.gi_name||'未命名'}" onblur="updateGroupName('${g.group_id}',this.value)" class="inline-input" style="width:100px"></td>
       <td style="font-size:.72rem;color:#888;max-width:130px;word-break:break-all">${g.group_id}</td>
-      <td style="font-size:.8rem;color:#666;white-space:nowrap">${joinedAt}</td>
+      <td style="font-size:.8rem;color:#888;white-space:nowrap">${joinedAt}</td>
       <td style="text-align:center">${toggle(g.group_id,'morning_push',g.morning_push)}</td>
       <td style="text-align:center">${toggle(g.group_id,'ride_reminder',g.ride_reminder)}</td>
       <td style="text-align:center">${toggle(g.group_id,'event_push',g.event_push)}</td>
@@ -485,8 +507,8 @@ async function dashboardPage(env) {
   const cronSettingRows = (cronRows.results||[]).map(c => `
     <tr>
       <td>${c.description}</td>
-      <td><input type="number" value="${c.push_hour_tw}" min="0" max="23" onblur="updateCron('${c.cron_type}',this.value)" style="border:1px solid #ddd;border-radius:4px;padding:4px 8px;width:60px"> 時（台灣）</td>
-      <td style="text-align:center"><input type="checkbox" ${c.enabled?'checked':''} onchange="toggleCron('${c.cron_type}',this.checked)" style="width:18px;height:18px;cursor:pointer"></td>
+      <td><input type="number" value="${c.push_hour_tw}" min="0" max="23" onblur="updateCron('${c.cron_type}',this.value)" class="inline-input" style="width:60px"> 時（台灣）</td>
+      <td style="text-align:center"><input type="checkbox" ${c.enabled?'checked':''} onchange="toggleCron('${c.cron_type}',this.checked)" style="width:18px;height:18px;cursor:pointer;accent-color:#FFD600"></td>
     </tr>`).join('');
 
   const scheduleRows = (schedules.results||[]).map(s => `
@@ -496,7 +518,7 @@ async function dashboardPage(env) {
       <td><span class="badge">${s.content_type}</span></td>
       <td style="max-width:150px;word-break:break-all;font-size:.82rem">${s.text_content||s.media_path||''}</td>
       <td>${s.repeat_type==='none'?'不重複':s.repeat_type==='daily'?'每天':'每週'}</td>
-      <td><span style="color:${s.status==='sent'?'#888':'#38a169'}">${s.status==='sent'?'已發送':'待發送'}</span></td>
+      <td><span style="color:${s.status==='sent'?'#666':'#FFD600'}">${s.status==='sent'?'已發送':'待發送'}</span></td>
       <td><button class="btn-del" onclick="del('/api/schedules/${s.id}')">刪除</button></td>
     </tr>`).join('');
 
@@ -506,9 +528,9 @@ async function dashboardPage(env) {
     <tr>
       <td style="max-width:260px;word-break:break-all">
         <span id="msg-text-${m.id}">${m.message}</span>
-        <textarea id="msg-edit-${m.id}" style="display:none;width:100%;min-height:60px;border:1px solid #667eea;border-radius:4px;padding:4px;font-size:.85rem">${m.message}</textarea>
+        <textarea id="msg-edit-${m.id}" style="display:none;width:100%;min-height:60px" class="inline-input">${m.message}</textarea>
       </td>
-      <td>${m.used_at||'未使用'}</td>
+      <td style="color:#888">${m.used_at||'未使用'}</td>
       <td style="white-space:nowrap">
         <button class="btn-edit" onclick="editMsg(${m.id})">編輯</button>
         <button class="btn-save" id="save-${m.id}" style="display:none" onclick="saveMsg(${m.id})">儲存</button>
@@ -521,368 +543,641 @@ async function dashboardPage(env) {
   const quotaMax = quotaRes.value || 0;
   const quotaUsed = consumeRes.totalUsage || 0;
   const quotaLeft = quotaMax - quotaUsed;
-  const quotaColor = quotaLeft <= 20 ? '#e53e3e' : quotaLeft <= 50 ? '#dd6b20' : '#38a169';
+  const quotaColor = quotaLeft <= 20 ? '#ff6b6b' : quotaLeft <= 50 ? '#ffa500' : '#4ade80';
+  const quotaPct = Math.min(100,Math.round(quotaUsed/quotaMax*100));
+
   const botCfgRaw = await env.SUNBIKE_KV.get('bot_config').catch(()=>null);
   const botCfg = botCfgRaw ? JSON.parse(botCfgRaw) : {contact_name:'隊長阿欽',bot_name:'娜美 Nami',fallback_msg:'這個要問隊長喔 😄',system_prompt_extra:''};
   const cfg_contact = botCfg.contact_name||'';
   const cfg_botname = botCfg.bot_name||'';
   const cfg_fallback = botCfg.fallback_msg||'';
   const cfg_extra = botCfg.system_prompt_extra||'';
+
   const morningImgOptions = (morningImgs.results||[]).map(img => `<option value="${img.r2_path}">${img.filename}</option>`).join('');
   const imgCards = (morningImgs.results||[]).map(img => `
-    <div style="position:relative;text-align:center">
-      <img src="${R2_BASE_URL}/${img.r2_path}" style="width:100%;height:90px;object-fit:cover;border-radius:8px;border:1px solid #e2e8f0">
-      <div style="font-size:.7rem;color:#666;margin-top:4px">${img.filename}</div>
-      <button onclick="delImg(${img.id})" style="position:absolute;top:2px;right:2px;background:rgba(0,0,0,.5);color:#fff;border:none;border-radius:50%;width:20px;height:20px;cursor:pointer;font-size:12px">×</button>
+    <div class="img-card">
+      <img src="${R2_BASE_URL}/${img.r2_path}" style="width:100%;height:90px;object-fit:cover;border-radius:8px;border:1px solid #333">
+      <div style="font-size:.7rem;color:#666;margin-top:4px;text-align:center">${img.filename}</div>
+      <button onclick="delImg(${img.id})" class="img-del-btn">×</button>
     </div>`).join('');
+
   const bdayRows = (bdays.results||[]).map(b => `<tr><td>${b.name}</td><td>${b.birthday}</td><td><button class="btn-del" onclick="del('/api/birthdays/${b.id}')">刪除</button></td></tr>`).join('');
+
   const kwRows = (keywords.results||[]).map(k => `<tr>
-    <td>${k.keyword}</td>
+    <td><span style="color:#FFD600;font-weight:600">${k.keyword}</span></td>
     <td><span class="badge">${k.reply_type}</span></td>
     <td style="max-width:180px;word-break:break-all;font-size:.82rem">
       <span id="kw-content-${k.id}">${k.reply_content||'—'}</span>
-      ${k.reply_type==='r2_image' ? `<select id="kw-gallery-${k.id}" style="display:none;width:100%;margin-bottom:4px;padding:4px;border:1px solid #ddd;border-radius:4px;font-size:.82rem" onchange="if(this.value){document.getElementById('kw-edit-${k.id}').value=this.value}">
+      ${k.reply_type==='r2_image' ? `<select id="kw-gallery-${k.id}" style="display:none;width:100%;margin-bottom:4px" class="inline-input" onchange="if(this.value){document.getElementById('kw-edit-${k.id}').value=this.value}">
         <option value="">── 從圖庫選取 ──</option>
         ${morningImgOptions}
       </select>` : ''}
-      <textarea id="kw-edit-${k.id}" style="display:none;width:100%;min-height:60px;border:1px solid #667eea;border-radius:4px;padding:4px;font-size:.82rem">${k.reply_content||''}</textarea>
+      <textarea id="kw-edit-${k.id}" style="display:none;width:100%;min-height:60px" class="inline-input">${k.reply_content||''}</textarea>
     </td>
     <td><span id="kw-desc-${k.id}">${k.description||''}</span>
-      <input id="kw-desc-edit-${k.id}" style="display:none;width:100%;border:1px solid #667eea;border-radius:4px;padding:4px" value="${k.description||''}">
+      <input id="kw-desc-edit-${k.id}" style="display:none;width:100%" class="inline-input" value="${k.description||''}">
     </td>
-    <td>${k.enabled?'✅':'❌'}</td>
+    <td>${k.enabled?'<span style="color:#4ade80">✓ 啟用</span>':'<span style="color:#666">✗ 停用</span>'}</td>
     <td style="white-space:nowrap">
       <button class="btn-edit" onclick="editKw(${k.id})">編輯</button>
       <button class="btn-save" id="kw-save-${k.id}" style="display:none" onclick="saveKw(${k.id})">儲存</button>
       <button class="btn-del" onclick="del('/api/keywords/${k.id}')">刪除</button>
     </td>
   </tr>`).join('');
+
   const evRows = (events.results||[]).map(e => `<tr>
     <td>${e.event_date}</td>
     <td><span class="badge">${e.event_type}</span></td>
     <td>${e.title}</td>
-    <td>${e.content_type}</td>
+    <td><span class="badge badge-gray">${e.content_type}</span></td>
     <td style="max-width:140px;word-break:break-all;font-size:.82rem">
       <span id="ev-content-${e.id}">${e.content||'Claude生成'}</span>
       <div id="ev-edit-${e.id}" style="display:none">
-        <select onchange="if(this.value){document.getElementById('ev-path-${e.id}').value=this.value}" style="width:100%;margin-bottom:4px;padding:4px;border:1px solid #ddd;border-radius:4px;font-size:.8rem">
+        <select onchange="if(this.value){document.getElementById('ev-path-${e.id}').value=this.value}" class="inline-input" style="width:100%;margin-bottom:4px">
           <option value="">── 從圖庫選取 ──</option>
           ${morningImgOptions}
         </select>
-        <input id="ev-path-${e.id}" value="${e.content||''}" style="width:100%;border:1px solid #667eea;border-radius:4px;padding:4px;font-size:.82rem">
+        <input id="ev-path-${e.id}" value="${e.content||''}" class="inline-input" style="width:100%">
       </div>
     </td>
-    <td>${e.pre_announce?'✅':'—'}</td>
+    <td>${e.pre_announce?'<span style="color:#FFD600">✓</span>':'—'}</td>
     <td style="white-space:nowrap">
       <button class="btn-edit" onclick="editEv(${e.id})">編輯</button>
       <button class="btn-save" id="ev-save-${e.id}" style="display:none" onclick="saveEv(${e.id})">儲存</button>
       <button class="btn-del" onclick="del('/api/events/${e.id}')">刪除</button>
     </td>
   </tr>`).join('');
+
   const groupOptions = (groupRows.results||[]).map(g => `<option value="${g.group_id}">${g.group_name||g.gi_name||'未命名'}</option>`).join('');
 
-  const CSS = `*{box-sizing:border-box;margin:0;padding:0}body{font-family:-apple-system,sans-serif;background:#f5f7fa;color:#333}
-.header{background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;padding:16px 24px;display:flex;align-items:center;justify-content:space-between}
-.header h1{font-size:1.2rem}.logout{color:#fff;text-decoration:none;font-size:.9rem;opacity:.8}
-.container{max-width:1100px;margin:24px auto;padding:0 16px}
-.section{background:#fff;border-radius:12px;padding:24px;margin-bottom:24px;box-shadow:0 2px 8px rgba(0,0,0,.08)}
-h2{font-size:1.1rem;margin-bottom:16px;color:#444;border-bottom:2px solid #667eea;padding-bottom:8px}
+  const CSS = `
+/* ── 強制亮色（預設） ── */
+body.theme-light {
+  --bg:       #f5f7fa;
+  --bg2:      #ffffff;
+  --bg3:      #f0f2f5;
+  --border:   #e2e6ea;
+  --border2:  #d0d5dd;
+  --text:     #1a1a1a;
+  --text2:    #555;
+  --text3:    #888;
+  --input-bg: #ffffff;
+  --hover-bg: #f8f9ff;
+  --badge-bg: #e8f0fe;
+  --badge-c:  #1a56db;
+  --toast-bg: #1a1a1a;
+  --toast-c:  #fff;
+  --shadow:   0 2px 8px rgba(0,0,0,.08);
+  --upload-hover: #fffde7;
+}
+:root {
+  --bg:       #f5f7fa;
+  --bg2:      #ffffff;
+  --bg3:      #f0f2f5;
+  --border:   #e2e6ea;
+  --border2:  #d0d5dd;
+  --text:     #1a1a1a;
+  --text2:    #555;
+  --text3:    #888;
+  --input-bg: #ffffff;
+  --hover-bg: #f8f9ff;
+  --badge-bg: #e8f0fe;
+  --badge-c:  #1a56db;
+  --toast-bg: #1a1a1a;
+  --toast-c:  #fff;
+  --shadow:   0 2px 8px rgba(0,0,0,.08);
+  --upload-hover: #fffde7;
+}
+/* ── 深色模式（只有「隨系統」模式才套用） ── */
+@media(prefers-color-scheme:dark){
+  body.theme-system {
+    --bg:       #0f0f0f;
+    --bg2:      #161616;
+    --bg3:      #1a1a1a;
+    --border:   #222;
+    --border2:  #2a2a2a;
+    --text:     #e0e0e0;
+    --text2:    #aaa;
+    --text3:    #666;
+    --input-bg: #1e1e1e;
+    --hover-bg: #191919;
+    --badge-bg: #1e3a5f;
+    --badge-c:  #60a5fa;
+    --toast-bg: #222;
+    --toast-c:  #fff;
+    --shadow:   0 2px 8px rgba(0,0,0,.3);
+    --upload-hover: #1a1800;
+  }
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Helvetica Neue',Arial,sans-serif;background:var(--bg);color:var(--text);min-height:100vh}
+
+/* ── Topbar ── */
+.topbar{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 24px;height:56px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100}
+.topbar-brand{display:flex;align-items:center;gap:10px}
+.topbar-logo{width:32px;height:32px;background:#FFD600;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:1.1rem}
+.topbar-title{font-size:1rem;font-weight:700;color:var(--text);letter-spacing:-.3px}
+.topbar-version{font-size:.72rem;color:var(--text3);margin-left:4px}
+.topbar-right{display:flex;align-items:center;gap:12px}
+.quota-badge{display:flex;align-items:center;gap:6px;background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:6px 12px;font-size:.82rem;cursor:pointer;color:var(--text)}
+.quota-dot{width:8px;height:8px;border-radius:50%;background:${quotaColor}}
+.logout-btn{color:var(--text3);text-decoration:none;font-size:.85rem;padding:6px 12px;border-radius:8px;border:1px solid var(--border2);transition:.15s}
+.logout-btn:hover{color:var(--text);border-color:var(--text2)}
+
+/* ── Tab Nav ── */
+.tab-nav{background:var(--bg2);border-bottom:1px solid var(--border);padding:0 24px;display:flex;gap:0;overflow-x:auto}
+.tab-btn{padding:14px 20px;background:none;border:none;border-bottom:2px solid transparent;color:var(--text3);font-size:.88rem;font-weight:500;cursor:pointer;white-space:nowrap;transition:.15s;display:flex;align-items:center;gap:6px}
+.tab-btn:hover{color:var(--text)}
+.tab-btn.active{color:#FFD600;border-bottom-color:#FFD600;font-weight:600}
+.tab-icon{font-size:1rem}
+
+/* ── Tab Content ── */
+.tab-pane{display:none;padding:24px;max-width:1200px;margin:0 auto}
+.tab-pane.active{display:block}
+
+/* ── Cards ── */
+.card{background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:20px;box-shadow:var(--shadow)}
+.card-title{font-size:.92rem;font-weight:700;color:var(--text);margin-bottom:16px;display:flex;align-items:center;gap:8px}
+.card-title::after{content:'';flex:1;height:1px;background:var(--border);margin-left:8px}
+
+/* ── Dashboard stats ── */
+.stats-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-bottom:20px}
+.stat-card{background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:16px;text-align:center}
+.stat-num{font-size:2rem;font-weight:700;font-variant-numeric:tabular-nums;line-height:1}
+.stat-label{font-size:.75rem;color:var(--text3);margin-top:6px;letter-spacing:.03em}
+.progress-bar{background:var(--border);border-radius:6px;height:8px;overflow:hidden;margin-top:8px}
+.progress-fill{height:100%;border-radius:6px;transition:.3s}
+
+/* ── Forms ── */
 .form-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-bottom:12px}
 .form-full{grid-column:1/-1}
-input[type=text],input[type=date],input[type=time],input[type=number],textarea,select{width:100%;padding:9px 12px;border:1.5px solid #e0e0e0;border-radius:8px;font-size:.9rem;outline:none;font-family:inherit}
-input:focus,textarea:focus,select:focus{border-color:#667eea}textarea{resize:vertical;min-height:70px}
-.btn{padding:9px 18px;border:none;border-radius:8px;cursor:pointer;font-size:.9rem;font-weight:600}
-.btn-primary{background:linear-gradient(135deg,#667eea,#764ba2);color:#fff}
-.btn-del{background:#fff0f0;color:#e53e3e;border:1px solid #fcd5d5;padding:4px 10px;border-radius:6px;cursor:pointer;font-size:.8rem}
-.btn-del:hover{background:#e53e3e;color:#fff}
-.btn-edit{background:#e8f4ff;color:#3182ce;border:1px solid #bee3f8;padding:4px 10px;border-radius:6px;cursor:pointer;font-size:.8rem}
-.btn-save{background:#e8fff0;color:#38a169;border:1px solid #9ae6b4;padding:4px 10px;border-radius:6px;cursor:pointer;font-size:.8rem}
-table{width:100%;border-collapse:collapse;font-size:.88rem}
-th{background:#f8f9ff;padding:9px 10px;text-align:left;font-weight:600;color:#555;border-bottom:2px solid #eee}
-td{padding:9px 10px;border-bottom:1px solid #f0f0f0;vertical-align:middle}tr:hover td{background:#fafbff}
-.badge{display:inline-block;padding:2px 8px;border-radius:12px;font-size:.78rem;background:#e8f4ff;color:#3182ce;font-weight:600}
-.hint{font-size:.78rem;color:#888;margin-top:5px}
-.upload-area{border:2px dashed #d0d0d0;border-radius:8px;padding:16px;text-align:center;cursor:pointer;transition:.2s;margin-bottom:8px}
-.upload-area:hover{border-color:#667eea;background:#f8f9ff}
-.toast{position:fixed;bottom:24px;right:24px;background:#333;color:#fff;padding:12px 20px;border-radius:8px;font-size:.9rem;opacity:0;transition:.3s;pointer-events:none;z-index:999}
-.toast.show{opacity:1}`;
+input[type=text],input[type=date],input[type=time],input[type=number],textarea,select,.inline-input{
+  width:100%;padding:9px 12px;background:var(--input-bg);border:1.5px solid var(--border2);border-radius:8px;
+  font-size:.88rem;color:var(--text);outline:none;font-family:inherit;transition:.15s
+}
+input:focus,textarea:focus,select:focus,.inline-input:focus{border-color:#FFD600}
+textarea{resize:vertical;min-height:70px}
+select option{background:var(--input-bg)}
+label.form-label{display:block;color:var(--text3);font-size:.75rem;font-weight:600;letter-spacing:.05em;text-transform:uppercase;margin-bottom:6px}
 
-  return `<!DOCTYPE html><html lang="zh-TW"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>娜美管理後台</title><style>${CSS}</style></head><body>
-<div class="header"><h1>🚴‍♀️ 娜美管理後台 v6</h1><a href="/admin/logout" class="logout">登出</a></div>
-<div class="container">
+/* ── Buttons ── */
+.btn{padding:9px 18px;border:none;border-radius:8px;cursor:pointer;font-size:.88rem;font-weight:600;transition:.15s;letter-spacing:.02em}
+.btn-primary{background:#FFD600;color:#111}
+.btn-primary:hover{background:#ffe033;transform:translateY(-1px)}
+.btn-del{background:var(--bg3);color:#e53e3e;border:1px solid var(--border2);padding:4px 10px;border-radius:6px;cursor:pointer;font-size:.8rem;transition:.15s}
+.btn-del:hover{background:#e53e3e;color:#fff;border-color:#e53e3e}
+.btn-edit{background:var(--bg3);color:#3182ce;border:1px solid var(--border2);padding:4px 10px;border-radius:6px;cursor:pointer;font-size:.8rem;transition:.15s}
+.btn-edit:hover{background:#3182ce;color:#fff;border-color:#3182ce}
+.btn-save{background:var(--bg3);color:#38a169;border:1px solid var(--border2);padding:4px 10px;border-radius:6px;cursor:pointer;font-size:.8rem;transition:.15s}
+.btn-save:hover{background:#38a169;color:#fff}
 
-<div class="section">
-<h2>📊 LINE Push 額度</h2>
-<div style="display:flex;align-items:center;gap:24px;flex-wrap:wrap">
-  <div style="text-align:center">
-    <div style="font-size:2rem;font-weight:700;color:${quotaColor}" id="quota-left">${quotaLeft}</div>
-    <div style="font-size:.85rem;color:#666">剩餘則數</div>
+/* ── Tables ── */
+table{width:100%;border-collapse:collapse;font-size:.85rem}
+th{padding:10px 12px;text-align:left;font-weight:600;color:var(--text3);border-bottom:1px solid var(--border);font-size:.78rem;letter-spacing:.04em;text-transform:uppercase}
+td{padding:10px 12px;border-bottom:1px solid var(--border);vertical-align:middle;color:var(--text2)}
+tr:hover td{background:var(--hover-bg)}
+.badge{display:inline-block;padding:2px 8px;border-radius:6px;font-size:.75rem;background:var(--badge-bg);color:var(--badge-c);font-weight:600}
+.badge-gray{background:var(--bg3);color:var(--text3)}
+
+/* ── Upload area ── */
+.upload-area{border:2px dashed var(--border2);border-radius:8px;padding:16px;text-align:center;cursor:pointer;transition:.2s;color:var(--text3);font-size:.88rem}
+.upload-area:hover{border-color:#FFD600;color:#FFD600;background:var(--upload-hover)}
+
+/* ── Image grid ── */
+.img-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:12px}
+.img-card{position:relative}
+.img-del-btn{position:absolute;top:4px;right:4px;background:rgba(0,0,0,.6);color:#fff;border:none;border-radius:50%;width:22px;height:22px;cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;opacity:0;transition:.15s}
+.img-card:hover .img-del-btn{opacity:1}
+
+/* ── Toast ── */
+.toast{position:fixed;bottom:24px;right:24px;background:var(--toast-bg);color:var(--toast-c);padding:12px 20px;border-radius:10px;font-size:.88rem;opacity:0;transition:.25s;pointer-events:none;z-index:999;border:1px solid var(--border);backdrop-filter:blur(8px)}
+.toast.show{opacity:1}
+.hint{font-size:.78rem;color:var(--text3);margin-top:5px}
+`;
+
+  return `<!DOCTYPE html><html lang="zh-TW"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>陽光單車後台</title><style>${CSS}</style></head><body>
+
+<!-- Topbar -->
+<div class="topbar">
+  <div class="topbar-brand">
+    <div class="topbar-logo">🚴‍♀️</div>
+    <span class="topbar-title">陽光單車後台</span>
+    <span class="topbar-version">v7.7</span>
   </div>
-  <div style="text-align:center">
-    <div style="font-size:2rem;font-weight:700;color:#667eea" id="quota-used">${quotaUsed}</div>
-    <div style="font-size:.85rem;color:#666">已使用</div>
-  </div>
-  <div style="text-align:center">
-    <div style="font-size:2rem;font-weight:700;color:#888">${quotaMax}</div>
-    <div style="font-size:.85rem;color:#666">月上限</div>
-  </div>
-  <div style="flex:1;min-width:200px">
-    <div style="background:#e2e8f0;border-radius:8px;height:12px;overflow:hidden">
-      <div style="background:${quotaColor};height:100%;width:${Math.min(100,Math.round(quotaUsed/quotaMax*100))}%;transition:.3s"></div>
+  <div class="topbar-right">
+    <a href="https://console.anthropic.com/settings/usage" target="_blank" class="quota-badge" style="text-decoration:none" title="查看 Claude API 用量">
+      <span>📊</span><span>API用量</span>
+    </a>
+    <a href="https://claude.ai/settings/usage" target="_blank" class="quota-badge" style="text-decoration:none" title="查看 Claude Pro 用量">
+      <span>🤖</span><span>Pro用量</span>
+    </a>
+    <div class="quota-badge" onclick="refreshQuota()" title="點擊更新">
+      <div class="quota-dot" id="quota-dot"></div>
+      <span id="quota-text">推播剩餘 <strong id="quota-left">${quotaLeft}</strong> 則</span>
     </div>
-    <div style="font-size:.8rem;color:#666;margin-top:4px">每月1日重置</div>
-  <button onclick="refreshQuota()" style="margin-top:8px;padding:4px 12px;background:#667eea;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:.82rem">🔄 重新整理</button>
+    <button id="theme-toggle" onclick="toggleTheme()" title="切換主題" style="background:var(--bg3);border:1px solid var(--border2);border-radius:8px;padding:6px 12px;font-size:.82rem;cursor:pointer;color:var(--text);display:flex;align-items:center;gap:5px">
+      <span id="theme-icon">🌙</span><span id="theme-label">隨系統</span>
+    </button>
+    <a href="/admin/logout" class="logout-btn">登出</a>
   </div>
 </div>
+
+<!-- Tab Nav -->
+<div class="tab-nav">
+  <button class="tab-btn active" onclick="switchTab('dashboard',this)"><span class="tab-icon">📊</span>儀表板</button>
+  <button class="tab-btn" onclick="switchTab('groups',this)"><span class="tab-icon">💬</span>群組管理</button>
+  <button class="tab-btn" onclick="switchTab('content',this)"><span class="tab-icon">📝</span>內容管理</button>
+  <button class="tab-btn" onclick="switchTab('system',this)"><span class="tab-icon">⚙️</span>系統設定</button>
 </div>
 
-<div class="section">
-<h2>💬 群組管理</h2>
-<table>
-  <thead><tr><th>群組名稱</th><th>Group ID</th><th>加入時間</th><th>早安</th><th>約騎提醒</th><th>節慶</th><th>生日</th><th>關鍵字</th><th>@娜美</th><th>操作</th></tr></thead>
-  <tbody>${groupSettingRows}</tbody>
-</table>
-</div>
+<!-- ═══════════════════════════════════════
+     TAB 1：儀表板
+═══════════════════════════════════════ -->
+<div class="tab-pane active" id="tab-dashboard">
 
-<div class="section">
-<h2>⏰ 推播時間設定</h2>
-<p class="hint" style="margin-bottom:12px">每小時整點觸發，程式自動比對設定時間執行對應任務</p>
-<table>
-  <thead><tr><th>任務</th><th>台灣時間</th><th>啟用</th></tr></thead>
-  <tbody>${cronSettingRows}</tbody>
-</table>
-</div>
+  <div class="card">
+    <div class="card-title">🟢 系統狀態</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px">
 
-<div class="section">
-<h2>📤 排程推播</h2>
-<div class="form-grid">
-  <input type="date" id="sp_date">
-  <input type="number" id="sp_hour" min="0" max="23" placeholder="小時（台灣，例：7）">
-  <select id="sp_group"><option value="all">全部群組</option>${groupOptions}</select>
-  <select id="sp_type" onchange="updateSpForm()">
-    <option value="text">text — 純文字</option>
-    <option value="r2_image">r2_image — 圖片</option>
-    <option value="r2_video">r2_video — 影片</option>
-    <option value="sticker">sticker — LINE貼圖</option>
-  </select>
-  <select id="sp_repeat">
-    <option value="none">不重複</option>
-    <option value="daily">每天</option>
-    <option value="weekly">每週</option>
-  </select>
-  <div class="form-full" id="sp_text_area"><textarea id="sp_text" placeholder="推播文字內容"></textarea></div>
-  <div class="form-full" id="sp_media_area" style="display:none">
-    <div class="upload-area" onclick="document.getElementById('sp_file').click()">📁 點擊上傳圖片/影片到 R2<input type="file" id="sp_file" style="display:none" accept="image/*,video/mp4" onchange="uploadFile(this)"></div>
-    <select id="sp_media_select" onchange="if(this.value){document.getElementById('sp_media_path').value=this.value}" style="width:100%;margin-bottom:8px;padding:8px;border:1px solid #ddd;border-radius:6px">
-  <option value="">── 從早安圖庫選取 ──</option>
-  ${morningImgOptions}
-</select>
-<input type="text" id="sp_media_path" placeholder="或輸入 R2 路徑 例: photos/morning.jpg" style="margin-bottom:8px">
-    <textarea id="sp_caption" placeholder="附帶文字說明（選填）" style="min-height:50px"></textarea>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:var(--bg3);border-radius:8px;border:1px solid var(--border)">
+          <span style="font-size:.88rem;color:var(--text2)">⚡ Bot 狀態</span>
+          <span style="color:#4ade80;font-weight:600;font-size:.88rem">● 運作中</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:var(--bg3);border-radius:8px;border:1px solid var(--border)">
+          <span style="font-size:.88rem;color:var(--text2)">🏷️ 目前版本</span>
+          <span style="color:#FFD600;font-weight:600;font-size:.88rem">v7.7</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:var(--bg3);border-radius:8px;border:1px solid var(--border)">
+          <span style="font-size:.88rem;color:var(--text2)">🌐 網址</span>
+          <a href="https://bot.jego3c.com" target="_blank" style="color:#60a5fa;font-size:.85rem;text-decoration:none">bot.jego3c.com</a>
+        </div>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <div style="padding:10px 14px;background:var(--bg3);border-radius:8px;border:1px solid var(--border)">
+          <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+            <span style="font-size:.88rem;color:var(--text2)">📤 LINE Push 額度</span>
+            <span style="font-weight:600;font-size:.88rem;color:${quotaColor}">${quotaLeft} / ${quotaMax}</span>
+          </div>
+          <div class="progress-bar">
+            <div class="progress-fill" style="width:${quotaPct}%;background:${quotaColor}"></div>
+          </div>
+          <div style="font-size:.75rem;color:var(--text3);margin-top:4px">每月1日重置</div>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:var(--bg3);border-radius:8px;border:1px solid var(--border)">
+          <span style="font-size:.88rem;color:var(--text2)">🌅 下次早安推播</span>
+          <span style="color:var(--text);font-weight:600;font-size:.88rem">${cronRows.results?.find(c=>c.cron_type==='morning')?.push_hour_tw ?? '—'}:00 台灣</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:var(--bg3);border-radius:8px;border:1px solid var(--border)">
+          <span style="font-size:.88rem;color:var(--text2)">🚴 下次約騎提醒</span>
+          <span style="color:var(--text);font-weight:600;font-size:.88rem">${cronRows.results?.find(c=>c.cron_type==='ride_day')?.push_hour_tw ?? '—'}:00 台灣</span>
+        </div>
+      </div>
+
+    </div>
   </div>
-  <div class="form-full" id="sp_sticker_area" style="display:none">
-    <input type="text" id="sp_sticker_id" placeholder="貼圖ID 例: 11537:52002734">
-    <p class="hint">參考: 11537:52002734（大心）| 11538:51626494（加油）| 11539:52114110（早安）</p>
+
+  <div class="stats-grid">
+    <div class="stat-card">
+      <div class="stat-num" style="color:${quotaColor}" id="quota-left-big">${quotaLeft}</div>
+      <div class="stat-label">推播剩餘則數</div>
+      <div class="progress-bar" style="margin-top:10px">
+        <div class="progress-fill" style="width:${quotaPct}%;background:${quotaColor}"></div>
+      </div>
+      <div style="font-size:.72rem;color:#555;margin-top:4px">${quotaUsed} / ${quotaMax}（每月1日重置）</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-num" style="color:#60a5fa">${(groupRows.results||[]).length}</div>
+      <div class="stat-label">管理群組數</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-num" style="color:#c084fc">${(keywords.results||[]).length}</div>
+      <div class="stat-label">關鍵字數量</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-num" style="color:#fb923c">${(morningImgs.results||[]).length}</div>
+      <div class="stat-label">早安圖庫張數</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-num" style="color:#4ade80">${(msgs.results||[]).length}</div>
+      <div class="stat-label">早安語錄則數</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-num" style="color:#f472b6">${(rides.results||[]).length}</div>
+      <div class="stat-label">約騎行程筆數</div>
+    </div>
   </div>
-</div>
-<button class="btn btn-primary" onclick="addSchedule()">新增排程推播</button>
-<table style="margin-top:16px">
-  <thead><tr><th>時間</th><th>群組</th><th>類型</th><th>內容</th><th>重複</th><th>狀態</th><th>操作</th></tr></thead>
-  <tbody>${scheduleRows}</tbody>
-</table>
-</div>
 
-<div class="section">
-<h2>🎉 特殊節日 / 節氣 / 活動</h2>
-<div class="form-grid">
-  <input type="date" id="ev_date">
-  <select id="ev_type"><option value="holiday">holiday — 節日</option><option value="solar_term">solar_term — 節氣</option><option value="event">event — 活動</option></select>
-  <input type="text" id="ev_title" placeholder="標題">
-  <select id="ev_content_type"><option value="claude">claude — AI自動生成</option><option value="text">text — 固定文字</option><option value="r2_image">r2_image — R2圖片</option></select>
-  <label style="display:flex;align-items:center;gap:6px;font-size:.9rem"><input type="checkbox" id="ev_pre" checked style="width:auto"> 前一天預告</label>
-  <div class="form-full"><textarea id="ev_content" placeholder="內容（claude可留空）"></textarea></div>
-</div>
-<button class="btn btn-primary" onclick="addEvent()">新增節日/節氣</button>
-<table style="margin-top:16px">
-  <thead><tr><th>日期</th><th>類型</th><th>標題</th><th>內容類型</th><th>內容</th><th>預告</th><th>操作</th></tr></thead>
-  <tbody>${evRows}</tbody>
-</table>
-</div>
-
-<div class="section">
-<h2>🔑 關鍵字管理</h2>
-<p class="hint" style="margin-bottom:12px">數字 1-3 可上傳R2圖片；4=天氣、5=約騎、6-10=賽事（自動搜尋）、11=新手資訊</p>
-<div class="form-grid">
-  <input type="text" id="kw_keyword" placeholder="關鍵字">
-  <select id="kw_type">
-    <option value="claude">claude — AI回答</option>
-    <option value="text">text — 固定文字</option>
-    <option value="link">link — 連結文字</option>
-    <option value="r2_image">r2_image — R2圖片</option>
-    <option value="r2_video">r2_video — R2影片</option>
-    <option value="sticker">sticker — LINE貼圖</option>
-  </select>
-  <input type="text" id="kw_desc" placeholder="說明">
-  <div class="form-full">
-    <textarea id="kw_content" placeholder="回覆內容（claude可留空）&#10;r2_image: stickers/female（隨機女生）或 stickers/male（隨機男生）或 photos/xxx.jpg&#10;sticker: 套件ID:貼圖ID"></textarea>
+  <div class="card">
+    <div class="card-title">⏰ 推播時間設定</div>
+    <p class="hint" style="margin-bottom:12px">每小時整點觸發，程式自動比對設定時間執行對應任務</p>
+    <table>
+      <thead><tr><th>任務</th><th>台灣時間</th><th>啟用</th></tr></thead>
+      <tbody>${cronSettingRows}</tbody>
+    </table>
   </div>
-</div>
-<button class="btn btn-primary" onclick="addKw()">新增關鍵字</button>
-<table style="margin-top:16px">
-  <thead><tr><th>關鍵字</th><th>類型</th><th>回覆內容</th><th>說明</th><th>狀態</th><th>操作</th></tr></thead>
-  <tbody>${kwRows}</tbody>
-</table>
-</div>
-
-<div class="section">
-<h2>📅 約騎行程</h2>
-<div class="form-grid">
-  <input type="date" id="r_date">
-  <input type="text" id="r_title" placeholder="標題">
-  <input type="text" id="r_place" placeholder="集合地點">
-  <input type="time" id="r_meet_time">
-  <input type="time" id="r_start_time">
-  <div class="form-full"><input type="text" id="r_route" placeholder="路線"></div>
-  <div class="form-full"><textarea id="r_notes" placeholder="備註"></textarea></div>
-</div>
-<button class="btn btn-primary" onclick="addRide()">新增約騎</button>
-<table style="margin-top:16px">
-  <thead><tr><th>日期</th><th>標題</th><th>集合地點</th><th>集合時間</th><th>路線</th><th>操作</th></tr></thead>
-  <tbody>${rideRows}</tbody>
-</table>
-</div>
-
-<div class="section">
-<h2>🖼️ 早安圖庫</h2>
-<div style="display:flex;gap:12px;margin-bottom:16px;align-items:center">
-  <input type="file" id="img_file" accept="image/*" style="flex:1">
-  <button class="btn btn-primary" onclick="uploadMorningImg()">上傳早安圖</button>
-</div>
-<div id="img_grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:12px;margin-top:12px">
-${imgCards}
-</div>
-</div>
-
-<div class="section">
-<h2>🌅 早安語錄</h2>
-<div style="display:flex;gap:12px;margin-bottom:16px">
-  <textarea id="msg_text" placeholder="輸入娜美風格早安語錄..." style="flex:1;min-height:70px"></textarea>
-  <button class="btn btn-primary" onclick="addMsg()" style="align-self:flex-end;white-space:nowrap">新增語錄</button>
-</div>
-<table><thead><tr><th>語錄內容</th><th>使用日期</th><th>操作</th></tr></thead><tbody>${msgRows}</tbody></table>
-</div>
-
-<div class="section">
-<h2>🎂 隊員生日</h2>
-<div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap">
-  <input type="text" id="b_name" placeholder="隊員名稱" style="flex:1;min-width:120px">
-  <input type="date" id="b_date" style="flex:1;min-width:140px">
-  <button class="btn btn-primary" onclick="addBday()">新增生日</button>
-</div>
-<table><thead><tr><th>姓名</th><th>生日</th><th>操作</th></tr></thead><tbody>${bdayRows}</tbody></table>
-</div>
 
 </div>
 
-<div class="section">
-<h2>⚙️ Bot 設定</h2>
-<div style="display:grid;gap:16px;margin-top:12px">
-  <div>
-    <label style="font-weight:600;display:block;margin-bottom:6px">📞 報名聯絡人</label>
-    <input type="text" id="cfg_contact" value="${cfg_contact}" style="width:100%;max-width:300px">
+<!-- ═══════════════════════════════════════
+     TAB 2：群組管理
+═══════════════════════════════════════ -->
+<div class="tab-pane" id="tab-groups">
+
+  <div class="card">
+    <div class="card-title">💬 群組列表與權限</div>
+    <div style="overflow-x:auto">
+    <table>
+      <thead><tr><th>群組名稱</th><th>Group ID</th><th>加入時間</th><th>早安</th><th>約騎提醒</th><th>節慶</th><th>生日</th><th>關鍵字</th><th>@娜美</th><th>操作</th></tr></thead>
+      <tbody>${groupSettingRows}</tbody>
+    </table>
+    </div>
   </div>
-  <div>
-    <label style="font-weight:600;display:block;margin-bottom:6px">🤖 Bot 名稱</label>
-    <input type="text" id="cfg_botname" value="${cfg_botname}" style="width:100%;max-width:300px">
+
+  <div class="card">
+    <div class="card-title">📤 排程推播</div>
+    <div class="form-grid">
+      <div><label class="form-label">日期</label><input type="date" id="sp_date"></div>
+      <div><label class="form-label">時間（台灣）</label><input type="number" id="sp_hour" min="0" max="23" placeholder="0-23"></div>
+      <div><label class="form-label">目標群組</label><select id="sp_group"><option value="all">全部群組</option>${groupOptions}</select></div>
+      <div><label class="form-label">內容類型</label><select id="sp_type" onchange="updateSpForm()">
+        <option value="text">text — 純文字</option>
+        <option value="r2_image">r2_image — 圖片</option>
+        <option value="r2_video">r2_video — 影片</option>
+        <option value="sticker">sticker — LINE貼圖</option>
+      </select></div>
+      <div><label class="form-label">重複</label><select id="sp_repeat">
+        <option value="none">不重複</option>
+        <option value="daily">每天</option>
+        <option value="weekly">每週</option>
+      </select></div>
+      <div class="form-full" id="sp_text_area"><label class="form-label">文字內容</label><textarea id="sp_text" placeholder="推播文字內容"></textarea></div>
+      <div class="form-full" id="sp_media_area" style="display:none">
+        <label class="form-label">圖片/影片</label>
+        <div class="upload-area" onclick="document.getElementById('sp_file').click()">📁 點擊上傳到 R2<input type="file" id="sp_file" style="display:none" accept="image/*,video/mp4" onchange="uploadFile(this)"></div>
+        <select id="sp_media_select" onchange="if(this.value){document.getElementById('sp_media_path').value=this.value}" style="width:100%;margin:8px 0">
+          <option value="">── 從早安圖庫選取 ──</option>${morningImgOptions}
+        </select>
+        <input type="text" id="sp_media_path" placeholder="或輸入 R2 路徑">
+        <textarea id="sp_caption" placeholder="附帶文字說明（選填）" style="margin-top:8px;min-height:50px"></textarea>
+      </div>
+      <div class="form-full" id="sp_sticker_area" style="display:none">
+        <label class="form-label">貼圖ID</label>
+        <input type="text" id="sp_sticker_id" placeholder="例: 11537:52002734">
+        <p class="hint">參考: 11537:52002734（大心）| 11538:51626494（加油）| 11539:52114110（早安）</p>
+      </div>
+    </div>
+    <button class="btn btn-primary" onclick="addSchedule()">新增排程推播</button>
+    <table style="margin-top:16px">
+      <thead><tr><th>時間</th><th>群組</th><th>類型</th><th>內容</th><th>重複</th><th>狀態</th><th>操作</th></tr></thead>
+      <tbody>${scheduleRows}</tbody>
+    </table>
   </div>
-  <div>
-    <label style="font-weight:600;display:block;margin-bottom:6px">💬 預設回覆（不知道時）</label>
-    <input type="text" id="cfg_fallback" value="${cfg_fallback}" style="width:100%">
-  </div>
-  <div>
-    <label style="font-weight:600;display:block;margin-bottom:6px">📝 額外人設（附加到 system prompt）</label>
-    <textarea id="cfg_extra" style="width:100%;min-height:80px">${cfg_extra}</textarea>
-  </div>
-  <button class="btn btn-primary" onclick="saveBotConfig()" style="max-width:160px">儲存設定</button>
+
 </div>
+
+<!-- ═══════════════════════════════════════
+     TAB 3：內容管理
+═══════════════════════════════════════ -->
+<div class="tab-pane" id="tab-content">
+
+  <div class="card">
+    <div class="card-title">🎉 特殊節日 / 節氣 / 活動</div>
+    <div class="form-grid">
+      <div><label class="form-label">日期</label><input type="date" id="ev_date"></div>
+      <div><label class="form-label">類型</label><select id="ev_type"><option value="holiday">holiday — 節日</option><option value="solar_term">solar_term — 節氣</option><option value="event">event — 活動</option></select></div>
+      <div><label class="form-label">標題</label><input type="text" id="ev_title" placeholder="節日標題"></div>
+      <div><label class="form-label">內容類型</label><select id="ev_content_type"><option value="claude">claude — AI自動生成</option><option value="text">text — 固定文字</option><option value="r2_image">r2_image — R2圖片</option></select></div>
+      <div style="display:flex;align-items:flex-end;padding-bottom:2px"><label style="display:flex;align-items:center;gap:6px;font-size:.88rem;color:#ccc;cursor:pointer"><input type="checkbox" id="ev_pre" checked style="width:auto;accent-color:#FFD600"> 前一天預告</label></div>
+      <div class="form-full"><label class="form-label">內容（claude可留空）</label><textarea id="ev_content" placeholder="內容（claude可留空）"></textarea></div>
+    </div>
+    <button class="btn btn-primary" onclick="addEvent()">新增節日/節氣</button>
+    <table style="margin-top:16px">
+      <thead><tr><th>日期</th><th>類型</th><th>標題</th><th>內容類型</th><th>內容</th><th>預告</th><th>操作</th></tr></thead>
+      <tbody>${evRows}</tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <div class="card-title">🔑 關鍵字管理</div>
+    <p class="hint" style="margin-bottom:12px">數字 1-3 可上傳R2圖片；4=天氣、5=約騎、6-10=賽事（自動搜尋）、11=新手資訊</p>
+    <div class="form-grid">
+      <div><label class="form-label">關鍵字</label><input type="text" id="kw_keyword" placeholder="關鍵字"></div>
+      <div><label class="form-label">類型</label><select id="kw_type">
+        <option value="claude">claude — AI回答</option>
+        <option value="text">text — 固定文字</option>
+        <option value="link">link — 連結文字</option>
+        <option value="r2_image">r2_image — R2圖片</option>
+        <option value="r2_video">r2_video — R2影片</option>
+        <option value="sticker">sticker — LINE貼圖</option>
+      </select></div>
+      <div><label class="form-label">說明</label><input type="text" id="kw_desc" placeholder="說明"></div>
+      <div class="form-full"><label class="form-label">回覆內容</label>
+        <textarea id="kw_content" placeholder="回覆內容（claude可留空）&#10;r2_image: stickers/female（隨機女生）或 stickers/male（隨機男生）&#10;sticker: 套件ID:貼圖ID"></textarea>
+      </div>
+    </div>
+    <button class="btn btn-primary" onclick="addKw()">新增關鍵字</button>
+    <table style="margin-top:16px">
+      <thead><tr><th>關鍵字</th><th>類型</th><th>回覆內容</th><th>說明</th><th>狀態</th><th>操作</th></tr></thead>
+      <tbody>${kwRows}</tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <div class="card-title">📅 約騎行程</div>
+    <div class="form-grid">
+      <div><label class="form-label">日期</label><input type="date" id="r_date"></div>
+      <div><label class="form-label">標題</label><input type="text" id="r_title" placeholder="標題"></div>
+      <div><label class="form-label">集合地點</label><input type="text" id="r_place" placeholder="集合地點"></div>
+      <div><label class="form-label">集合時間</label><input type="time" id="r_meet_time"></div>
+      <div><label class="form-label">出發時間</label><input type="time" id="r_start_time"></div>
+      <div class="form-full"><label class="form-label">路線</label><input type="text" id="r_route" placeholder="路線"></div>
+      <div class="form-full"><label class="form-label">備註</label><textarea id="r_notes" placeholder="備註" style="min-height:50px"></textarea></div>
+    </div>
+    <button class="btn btn-primary" onclick="addRide()">新增約騎</button>
+    <table style="margin-top:16px">
+      <thead><tr><th>日期</th><th>標題</th><th>集合地點</th><th>集合時間</th><th>路線</th><th>操作</th></tr></thead>
+      <tbody>${rideRows}</tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <div class="card-title">🖼️ 早安圖庫</div>
+    <div style="display:flex;gap:12px;margin-bottom:16px;align-items:center">
+      <input type="file" id="img_file" accept="image/*" style="flex:1">
+      <button class="btn btn-primary" onclick="uploadMorningImg()">上傳早安圖</button>
+    </div>
+    <div class="img-grid">${imgCards}</div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">🌅 早安語錄</div>
+    <div style="display:flex;gap:12px;margin-bottom:16px">
+      <textarea id="msg_text" placeholder="輸入娜美風格早安語錄..." style="flex:1;min-height:70px"></textarea>
+      <button class="btn btn-primary" onclick="addMsg()" style="align-self:flex-end;white-space:nowrap">新增語錄</button>
+    </div>
+    <table><thead><tr><th>語錄內容</th><th>使用日期</th><th>操作</th></tr></thead><tbody>${msgRows}</tbody></table>
+  </div>
+
+  <div class="card">
+    <div class="card-title">🎂 隊員生日</div>
+    <div style="display:flex;gap:12px;margin-bottom:16px;flex-wrap:wrap">
+      <input type="text" id="b_name" placeholder="隊員名稱" style="flex:1;min-width:120px">
+      <input type="date" id="b_date" style="flex:1;min-width:140px">
+      <button class="btn btn-primary" onclick="addBday()">新增生日</button>
+    </div>
+    <table><thead><tr><th>姓名</th><th>生日</th><th>操作</th></tr></thead><tbody>${bdayRows}</tbody></table>
+  </div>
+
+</div>
+
+<!-- ═══════════════════════════════════════
+     TAB 4：系統設定
+═══════════════════════════════════════ -->
+<div class="tab-pane" id="tab-system">
+
+  <div class="card">
+    <div class="card-title">🤖 Bot 基本設定</div>
+    <div style="display:grid;gap:16px;max-width:600px">
+      <div><label class="form-label">報名聯絡人</label><input type="text" id="cfg_contact" value="${cfg_contact}"></div>
+      <div><label class="form-label">Bot 名稱</label><input type="text" id="cfg_botname" value="${cfg_botname}"></div>
+      <div><label class="form-label">預設回覆（不知道時）</label><input type="text" id="cfg_fallback" value="${cfg_fallback}"></div>
+      <div><label class="form-label">額外人設（附加到 system prompt）</label><textarea id="cfg_extra" style="min-height:80px">${cfg_extra}</textarea></div>
+      <button class="btn btn-primary" onclick="saveBotConfig()" style="max-width:160px">儲存設定</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">📊 LINE Push 額度詳情</div>
+    <div style="display:flex;align-items:center;gap:24px;flex-wrap:wrap">
+      <div style="text-align:center">
+        <div style="font-size:2.5rem;font-weight:700;color:${quotaColor}" id="quota-left-system">${quotaLeft}</div>
+        <div style="font-size:.82rem;color:#666;margin-top:4px">剩餘則數</div>
+      </div>
+      <div style="text-align:center">
+        <div style="font-size:2.5rem;font-weight:700;color:#60a5fa">${quotaUsed}</div>
+        <div style="font-size:.82rem;color:#666;margin-top:4px">已使用</div>
+      </div>
+      <div style="text-align:center">
+        <div style="font-size:2.5rem;font-weight:700;color:#555">${quotaMax}</div>
+        <div style="font-size:.82rem;color:#666;margin-top:4px">月上限</div>
+      </div>
+      <div style="flex:1;min-width:200px">
+        <div class="progress-bar"><div class="progress-fill" style="width:${quotaPct}%;background:${quotaColor}"></div></div>
+        <div style="font-size:.8rem;color:#555;margin-top:6px">每月1日重置</div>
+        <button onclick="refreshQuota()" class="btn btn-primary" style="margin-top:10px;padding:6px 14px;font-size:.82rem">🔄 重新整理</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">🔧 系統資訊</div>
+    <div style="display:grid;gap:8px;font-size:.88rem;color:#888">
+      <div>平台：<span style="color:#ccc">Cloudflare Workers</span></div>
+      <div>Bot 帳號：<span style="color:#ccc">@862bfsiu</span></div>
+      <div>GitHub：<span style="color:#FFD600">a4376976/sunbike-bot</span></div>
+    </div>
+  </div>
+
 </div>
 
 <div class="toast" id="toast"></div>
+
 <script>
+// ── 主題切換 ──
+function toggleTheme(){
+  const body = document.body;
+  const isSystem = body.classList.contains('theme-system');
+  if(isSystem){
+    // 切回自動（亮色）
+    body.classList.remove('theme-system');
+    body.classList.add('theme-light');
+    document.getElementById('theme-icon').textContent='🌙';
+    document.getElementById('theme-label').textContent='隨系統';
+    localStorage.setItem('sb-theme','light');
+  } else {
+    // 切到隨系統
+    body.classList.remove('theme-light');
+    body.classList.add('theme-system');
+    document.getElementById('theme-icon').textContent='☀️';
+    document.getElementById('theme-label').textContent='自動';
+    localStorage.setItem('sb-theme','system');
+  }
+}
+// 初始化主題
+(function(){
+  const saved = localStorage.getItem('sb-theme') || 'light';
+  if(saved === 'system'){
+    document.body.classList.add('theme-system');
+    document.getElementById('theme-icon').textContent='☀️';
+    document.getElementById('theme-label').textContent='自動';
+  } else {
+    document.body.classList.add('theme-light');
+  }
+})();
+
+// ── Tab switching ──
+function switchTab(name, btn) {
+  document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-'+name).classList.add('active');
+  btn.classList.add('active');
+}
+
+// ── Utils ──
 const TOK = '${ADMIN_PASSWORD}';
-function showToast(msg,ok=true){const t=document.getElementById('toast');t.textContent=msg;t.style.background=ok?'#38a169':'#e53e3e';t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2500)}
+function showToast(msg,ok=true){const t=document.getElementById('toast');t.textContent=msg;t.style.background=ok?'#1a3a1a':'#3a1a1a';t.style.borderColor=ok?'#4ade80':'#ff6b6b';t.style.color=ok?'#4ade80':'#ff6b6b';t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2500)}
 async function api(path,method='GET',body=null){const opts={method,headers:{'Content-Type':'application/json','X-Admin-Token':TOK}};if(body)opts.body=JSON.stringify(body);const r=await fetch(path,opts);return r.json()}
 async function del(path){if(!confirm('確定刪除？'))return;const res=await api(path,'DELETE');if(res.ok){showToast('已刪除');location.reload()}else showToast('刪除失敗',false)}
+
+// ── Groups ──
 async function toggleGroup(id,field,val){const res=await api('/api/groups/'+encodeURIComponent(id),'PATCH',{field,value:val?1:0});if(res.ok)showToast('已更新');else showToast('更新失敗',false)}
 async function updateGroupName(id,name){await api('/api/groups/'+encodeURIComponent(id),'PATCH',{field:'group_name',value:name});showToast('群組名稱已更新')}
 async function delGroup(id){if(!confirm('確定刪除此群組設定？'))return;const res=await api('/api/groups/'+encodeURIComponent(id),'DELETE');if(res.ok){showToast('已刪除');location.reload()}}
+
+// ── Cron ──
 async function toggleCron(type,val){await api('/api/cron/'+type,'PATCH',{field:'enabled',value:val?1:0});showToast('已更新')}
 async function updateCron(type,hour){await api('/api/cron/'+type,'PATCH',{field:'push_hour_tw',value:parseInt(hour)});showToast('推播時間已更新')}
+
+// ── Schedule form ──
 function updateSpForm(){const t=document.getElementById('sp_type').value;document.getElementById('sp_text_area').style.display=t==='text'?'':'none';document.getElementById('sp_media_area').style.display=(t==='r2_image'||t==='r2_video')?'':'none';document.getElementById('sp_sticker_area').style.display=t==='sticker'?'':'none'}
 async function uploadFile(input){const file=input.files[0];if(!file)return;showToast('上傳中...');const fd=new FormData();fd.append('file',file);const r=await fetch('/api/upload',{method:'POST',headers:{'X-Admin-Token':TOK},body:fd});const res=await r.json();if(res.ok){document.getElementById('sp_media_path').value=res.path;showToast('上傳成功: '+res.path)}else showToast('上傳失敗',false)}
 async function addSchedule(){const t=document.getElementById('sp_type').value;const d={push_date:document.getElementById('sp_date').value,push_hour:parseInt(document.getElementById('sp_hour').value),group_target:document.getElementById('sp_group').value,content_type:t,repeat_type:document.getElementById('sp_repeat').value};if(!d.push_date||isNaN(d.push_hour))return showToast('請填寫日期和時間',false);if(t==='text'){d.text_content=document.getElementById('sp_text').value;if(!d.text_content)return showToast('請輸入文字',false);}else if(t==='r2_image'||t==='r2_video'){d.media_path=document.getElementById('sp_media_path').value;d.caption=document.getElementById('sp_caption').value;if(!d.media_path)return showToast('請上傳或輸入路徑',false);}else if(t==='sticker'){d.media_path=document.getElementById('sp_sticker_id').value;if(!d.media_path)return showToast('請輸入貼圖ID',false);}const res=await api('/api/schedules','POST',d);if(res.ok){showToast('新增成功！');location.reload()}else showToast('新增失敗',false)}
+
+// ── Messages ──
 function editMsg(id){document.getElementById('msg-text-'+id).style.display='none';document.getElementById('msg-edit-'+id).style.display='block';document.getElementById('save-'+id).style.display='inline-block'}
 async function saveMsg(id){const t=document.getElementById('msg-edit-'+id).value.trim();if(!t)return showToast('內容不能為空',false);const res=await api('/api/messages/'+id,'PATCH',{message:t});if(res.ok){showToast('已更新');location.reload()}else showToast('更新失敗',false)}
-async function addEvent(){const d={event_date:document.getElementById('ev_date').value,event_type:document.getElementById('ev_type').value,title:document.getElementById('ev_title').value.trim(),content_type:document.getElementById('ev_content_type').value,content:document.getElementById('ev_content').value||null,pre_announce:document.getElementById('ev_pre').checked?1:0};if(!d.event_date||!d.title)return showToast('請填寫日期和標題',false);const res=await api('/api/events','POST',d);if(res.ok){showToast('新增成功！');location.reload()}else showToast('新增失敗',false)}
-async function addKw(){const d={keyword:document.getElementById('kw_keyword').value.trim(),reply_type:document.getElementById('kw_type').value,reply_content:document.getElementById('kw_content').value||null,description:document.getElementById('kw_desc').value.trim()};if(!d.keyword)return showToast('請輸入關鍵字',false);const res=await api('/api/keywords','POST',d);if(res.ok){showToast('新增成功！');location.reload()}else showToast('新增失敗: '+(res.error||''),false)}
-async function addRide(){const d={ride_date:document.getElementById('r_date').value,title:document.getElementById('r_title').value,meeting_place:document.getElementById('r_place').value,meet_time:document.getElementById('r_meet_time').value,start_time:document.getElementById('r_start_time').value,route:document.getElementById('r_route').value,notes:document.getElementById('r_notes').value};if(!d.ride_date||!d.meeting_place)return showToast('請填寫日期和集合地點',false);const res=await api('/api/rides','POST',d);if(res.ok){showToast('新增成功！');location.reload()}else showToast('新增失敗',false)}
 async function addMsg(){const message=document.getElementById('msg_text').value.trim();if(!message)return showToast('請輸入語錄',false);const res=await api('/api/messages','POST',{message});if(res.ok){showToast('新增成功！');location.reload()}}
-async function editEv(id){
-  document.getElementById('ev-content-'+id).style.display='none';
-  document.getElementById('ev-edit-'+id).style.display='block';
-  document.getElementById('ev-save-'+id).style.display='inline-block';
-}
-async function saveEv(id){
-  const content=document.getElementById('ev-path-'+id).value.trim();
-  const res=await api('/api/events/'+id,'PATCH',{content:content});
-  if(res.ok){showToast('已更新');location.reload()}else showToast('更新失敗',false);
-}
-async function editKw(id){
-  document.getElementById('kw-content-'+id).style.display='none';
-  document.getElementById('kw-edit-'+id).style.display='block';
-  const gallery=document.getElementById('kw-gallery-'+id);
-  if(gallery) gallery.style.display='block';
-  document.getElementById('kw-desc-'+id).style.display='none';
-  document.getElementById('kw-desc-edit-'+id).style.display='block';
-  document.getElementById('kw-save-'+id).style.display='inline-block';
-}
-async function saveKw(id){
-  const content=document.getElementById('kw-edit-'+id).value.trim();
-  const desc=document.getElementById('kw-desc-edit-'+id).value.trim();
-  const res=await api('/api/keywords/'+id,'PATCH',{reply_content:content,description:desc});
-  if(res.ok){showToast('已更新');location.reload()}else showToast('更新失敗',false);
-}
-async function refreshQuota(){
-  const res = await api('/api/quota','GET');
-  if(res.quota){
-    const max=res.quota.value||0;
-    const used=res.consumption?.totalUsage||0;
-    const left=max-used;
-    const color=left<=20?'#e53e3e':left<=50?'#dd6b20':'#38a169';
-    document.querySelectorAll('[id^="quota-"]').forEach(el=>{
-      if(el.id==='quota-left'){el.textContent=left;el.style.color=color;}
-      if(el.id==='quota-used'){el.textContent=used;}
-      if(el.id==='quota-max'){el.textContent=max;}
-    });
-    showToast('額度已更新');
-  }
-}
-async function saveBotConfig(){
-  const cfg={
-    contact_name:document.getElementById('cfg_contact').value.trim(),
-    bot_name:document.getElementById('cfg_botname').value.trim(),
-    fallback_msg:document.getElementById('cfg_fallback').value.trim(),
-    system_prompt_extra:document.getElementById('cfg_extra').value.trim()
-  };
-  const res=await api('/api/bot-config','POST',cfg);
-  if(res.ok)showToast('設定已儲存！');else showToast('儲存失敗',false);
-}
+
+// ── Events ──
+async function addEvent(){const d={event_date:document.getElementById('ev_date').value,event_type:document.getElementById('ev_type').value,title:document.getElementById('ev_title').value.trim(),content_type:document.getElementById('ev_content_type').value,content:document.getElementById('ev_content').value||null,pre_announce:document.getElementById('ev_pre').checked?1:0};if(!d.event_date||!d.title)return showToast('請填寫日期和標題',false);const res=await api('/api/events','POST',d);if(res.ok){showToast('新增成功！');location.reload()}else showToast('新增失敗',false)}
+async function editEv(id){document.getElementById('ev-content-'+id).style.display='none';document.getElementById('ev-edit-'+id).style.display='block';document.getElementById('ev-save-'+id).style.display='inline-block'}
+async function saveEv(id){const content=document.getElementById('ev-path-'+id).value.trim();const res=await api('/api/events/'+id,'PATCH',{content:content});if(res.ok){showToast('已更新');location.reload()}else showToast('更新失敗',false)}
+
+// ── Keywords ──
+async function addKw(){const d={keyword:document.getElementById('kw_keyword').value.trim(),reply_type:document.getElementById('kw_type').value,reply_content:document.getElementById('kw_content').value||null,description:document.getElementById('kw_desc').value.trim()};if(!d.keyword)return showToast('請輸入關鍵字',false);const res=await api('/api/keywords','POST',d);if(res.ok){showToast('新增成功！');location.reload()}else showToast('新增失敗: '+(res.error||''),false)}
+async function editKw(id){document.getElementById('kw-content-'+id).style.display='none';document.getElementById('kw-edit-'+id).style.display='block';const gallery=document.getElementById('kw-gallery-'+id);if(gallery)gallery.style.display='block';document.getElementById('kw-desc-'+id).style.display='none';document.getElementById('kw-desc-edit-'+id).style.display='block';document.getElementById('kw-save-'+id).style.display='inline-block'}
+async function saveKw(id){const content=document.getElementById('kw-edit-'+id).value.trim();const desc=document.getElementById('kw-desc-edit-'+id).value.trim();const res=await api('/api/keywords/'+id,'PATCH',{reply_content:content,description:desc});if(res.ok){showToast('已更新');location.reload()}else showToast('更新失敗',false)}
+
+// ── Rides ──
+async function addRide(){const d={ride_date:document.getElementById('r_date').value,title:document.getElementById('r_title').value,meeting_place:document.getElementById('r_place').value,meet_time:document.getElementById('r_meet_time').value,start_time:document.getElementById('r_start_time').value,route:document.getElementById('r_route').value,notes:document.getElementById('r_notes').value};if(!d.ride_date||!d.meeting_place)return showToast('請填寫日期和集合地點',false);const res=await api('/api/rides','POST',d);if(res.ok){showToast('新增成功！');location.reload()}else showToast('新增失敗',false)}
+
+// ── Birthdays ──
+async function addBday(){const name=document.getElementById('b_name').value.trim(),birthday=document.getElementById('b_date').value;if(!name||!birthday)return showToast('請填寫姓名和生日',false);const res=await api('/api/birthdays','POST',{name,birthday});if(res.ok){showToast('新增成功！');location.reload()}}
+
+// ── Images ──
 async function uploadMorningImg(){const f=document.getElementById('img_file').files[0];if(!f)return showToast('請選擇圖片',false);showToast('上傳中...');const fd=new FormData();fd.append('file',f);const r=await fetch('/api/morning-images',{method:'POST',headers:{'X-Admin-Token':TOK},body:fd});const res=await r.json();if(res.ok){showToast('上傳成功！');location.reload()}else showToast('上傳失敗',false)}
 async function delImg(id){if(!confirm('確定刪除此圖片？'))return;const res=await api('/api/morning-images','DELETE',{id});if(res.ok){showToast('已刪除');location.reload()}else showToast('刪除失敗',false)}
-async function addBday(){const name=document.getElementById('b_name').value.trim(),birthday=document.getElementById('b_date').value;if(!name||!birthday)return showToast('請填寫姓名和生日',false);const res=await api('/api/birthdays','POST',{name,birthday});if(res.ok){showToast('新增成功！');location.reload()}}
+
+// ── Bot Config ──
+async function saveBotConfig(){const cfg={contact_name:document.getElementById('cfg_contact').value.trim(),bot_name:document.getElementById('cfg_botname').value.trim(),fallback_msg:document.getElementById('cfg_fallback').value.trim(),system_prompt_extra:document.getElementById('cfg_extra').value.trim()};const res=await api('/api/bot-config','POST',cfg);if(res.ok)showToast('設定已儲存！');else showToast('儲存失敗',false)}
+
+// ── Quota refresh ──
+async function refreshQuota(){const res=await api('/api/quota','GET');if(res.quota){const max=res.quota.value||0;const used=res.consumption?.totalUsage||0;const left=max-used;const color=left<=20?'#ff6b6b':left<=50?'#ffa500':'#4ade80';document.getElementById('quota-left').textContent=left;document.getElementById('quota-left-big').textContent=left;document.getElementById('quota-left-system').textContent=left;document.getElementById('quota-left-big').style.color=color;document.getElementById('quota-left-system').style.color=color;document.getElementById('quota-dot').style.background=color;showToast('額度已更新')}}
 </script></body></html>`;
 }
-
+// ─── ROUTER ───────────────────────────────────────────────
 // ─── ROUTER ───────────────────────────────────────────────
 export default {
   async fetch(request, env, ctx) {
@@ -1076,7 +1371,7 @@ export default {
         if (source.type === 'group') await saveGroupId(source.groupId, env);
 
         if (ev.type === 'join') {
-          await reply( NAMI_INTRO, env);
+          await lineReply(ev.replyToken, NAMI_INTRO, env);
           continue;
         }
         if (ev.type !== 'message' || ev.message.type !== 'text') continue;

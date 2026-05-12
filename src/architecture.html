@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>陽光單車Bot — 系統架構圖 v7.7</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap');
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Noto Sans TC', sans-serif;
+    background: #ffffff;
+    color: #1a1a1a;
+    padding: 32px;
+    max-width: 960px;
+    margin: 0 auto;
+  }
+
+  .header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 28px;
+    padding-bottom: 16px;
+    border-bottom: 2px solid #1a1a1a;
+  }
+  .header-logo {
+    width: 44px; height: 44px;
+    background: #FFD600;
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.5rem;
+    flex-shrink: 0;
+  }
+  .header-text h1 { font-size: 1.3rem; font-weight: 700; color: #1a1a1a; }
+  .header-text p { font-size: .78rem; color: #666; margin-top: 2px; }
+  .version-badge {
+    margin-left: auto;
+    background: #1a1a1a; color: #FFD600;
+    padding: 4px 12px; border-radius: 20px;
+    font-size: .78rem; font-weight: 700; flex-shrink: 0;
+  }
+
+  .arch {
+    display: grid;
+    grid-template-columns: 110px 1fr;
+  }
+
+  .layer-label {
+    display: flex;
+    align-items: flex-start;
+    justify-content: flex-end;
+    padding: 16px 14px 16px 0;
+    font-size: .67rem;
+    font-weight: 700;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: #999;
+    border-right: 2px solid #e0e0e0;
+  }
+
+  .layer-content {
+    padding: 12px 0 12px 18px;
+    border-bottom: 1px solid #eee;
+  }
+  .layer-content:last-child { border-bottom: none; }
+
+  .node-row {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+    margin-bottom: 6px;
+  }
+  .node-row:last-child { margin-bottom: 0; }
+
+  .node {
+    display: flex; align-items: center; gap: 7px;
+    background: #f8f8f8; border: 1.5px solid #ddd;
+    border-radius: 8px; padding: 8px 12px;
+    font-size: .8rem; color: #333;
+  }
+  .node-icon { font-size: 1rem; }
+  .node-label { font-weight: 600; color: #1a1a1a; }
+  .node-sub { font-size: .68rem; color: #888; margin-top: 1px; }
+
+  .node.yellow { background: #fffde7; border-color: #e6c200; }
+  .node.yellow .node-label { color: #6b5000; }
+  .node.green { background: #f0faf4; border-color: #2e9e5b; }
+  .node.green .node-label { color: #1a5e38; }
+  .node.orange { background: #fff7f0; border-color: #d97316; }
+  .node.orange .node-label { color: #7c3a00; }
+  .node.blue { background: #f0f5ff; border-color: #3b6fd4; }
+  .node.blue .node-label { color: #1a3a8a; }
+  .node.purple { background: #f7f0ff; border-color: #7c3aed; }
+  .node.purple .node-label { color: #4c1a8a; }
+  .node.dark { background: #f5f5f5; border-color: #999; }
+  .node.dark .node-label { color: #333; }
+
+  .flow-group {
+    background: #fafafa; border: 1px solid #e5e5e5;
+    border-radius: 10px; padding: 11px 13px; margin-bottom: 9px;
+  }
+  .flow-group:last-child { margin-bottom: 0; }
+
+  .flow-title {
+    font-size: .68rem; font-weight: 700;
+    letter-spacing: .06em; text-transform: uppercase;
+    color: #888; margin-bottom: 9px;
+    padding-bottom: 6px; border-bottom: 1px solid #e5e5e5;
+  }
+
+  .note {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-size: .69rem; border-radius: 5px;
+    padding: 3px 8px; margin-top: 7px; margin-right: 5px;
+    color: #666; background: #f5f5f5; border: 1px solid #ddd;
+  }
+  .note.warn { border-color: #d97316; color: #7c3a00; background: #fff7f0; }
+  .note.info { border-color: #3b6fd4; color: #1a3a8a; background: #f0f5ff; }
+  .note.success { border-color: #2e9e5b; color: #1a5e38; background: #f0faf4; }
+
+  .stores {
+    display: grid; grid-template-columns: repeat(3,1fr); gap: 8px;
+  }
+  .store {
+    background: #fafafa; border: 1px solid #e0e0e0;
+    border-radius: 8px; padding: 10px 12px;
+  }
+  .store-title {
+    font-size: .68rem; font-weight: 700; color: #666;
+    letter-spacing: .05em; text-transform: uppercase;
+    margin-bottom: 7px; padding-bottom: 5px; border-bottom: 1px solid #eee;
+  }
+  .store-item {
+    font-size: .72rem; color: #555;
+    padding: 2px 0; border-bottom: 1px solid #f0f0f0;
+  }
+  .store-item:last-child { border-bottom: none; }
+
+  .tag {
+    display: inline-block; font-size: .62rem;
+    padding: 1px 6px; border-radius: 4px;
+    font-weight: 700; letter-spacing: .04em; margin-left: 5px;
+    vertical-align: middle;
+  }
+  .tag-free { background: #e8f5ee; color: #1a5e38; border: 1px solid #2e9e5b; }
+  .tag-paid { background: #fff0e5; color: #7c3a00; border: 1px solid #d97316; }
+
+  .legend {
+    display: flex; gap: 14px; flex-wrap: wrap;
+    margin-top: 22px; padding-top: 14px;
+    border-top: 1.5px solid #1a1a1a;
+  }
+  .legend-item {
+    display: flex; align-items: center; gap: 5px;
+    font-size: .71rem; color: #555;
+  }
+  .legend-dot { width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid #333; }
+
+  @media print {
+    body { padding: 16px; }
+    .node, .flow-group, .store { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+
+  <div class="header">
+    <div class="header-logo">🚴‍♀️</div>
+    <div class="header-text">
+      <h1>陽光單車Bot — 系統架構圖</h1>
+      <p>Sunbike Bot Architecture · Cloudflare Workers + LINE Messaging API · 2026-05-12</p>
+    </div>
+    <div class="version-badge">v7.7</div>
+  </div>
+
+  <div class="arch">
+
+    <div class="layer-label">用戶端</div>
+    <div class="layer-content">
+      <div class="node-row">
+        <div class="node yellow"><span class="node-icon">👥</span>
+          <div><div class="node-label">LINE 群組用戶</div><div class="node-sub">傳訊息 / @ 娜美 / 輸入數字</div></div>
+        </div>
+        <span style="font-size:.85rem;color:#aaa;padding:0 4px">→</span>
+        <div class="node yellow"><span class="node-icon">📱</span>
+          <div><div class="node-label">LINE Messaging API</div><div class="node-sub">Webhook → Cloudflare Workers</div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="layer-label">核心處理</div>
+    <div class="layer-content">
+      <div class="flow-group">
+        <div class="flow-title">🔁 Webhook 即時回覆 — ReplyToken<span class="tag tag-free">免費無限</span></div>
+        <div class="node-row">
+          <div class="node green"><span class="node-icon">🔑</span>
+            <div><div class="node-label">關鍵字回覆</div><div class="node-sub">數字 1-11 / 自訂關鍵字</div></div>
+          </div>
+          <div class="node green"><span class="node-icon">🤖</span>
+            <div><div class="node-label">@娜美 AI回覆</div><div class="node-sub">Claude Haiku / Sonnet</div></div>
+          </div>
+          <div class="node green"><span class="node-icon">🌤️</span>
+            <div><div class="node-label">天氣查詢</div><div class="node-sub">OpenWeather API</div></div>
+          </div>
+          <div class="node green"><span class="node-icon">🔍</span>
+            <div><div class="node-label">賽事搜尋</div><div class="node-sub">Brave Search API</div></div>
+          </div>
+        </div>
+      </div>
+      <div class="flow-group">
+        <div class="flow-title">⏰ Cron 定時推播 — Push Message<span class="tag tag-paid">200則/月</span></div>
+        <div class="node-row">
+          <div class="node orange"><span class="node-icon">🌅</span>
+            <div><div class="node-label">早安推播</div><div class="node-sub">每天 07:00 台灣</div></div>
+          </div>
+          <div class="node orange"><span class="node-icon">🚴</span>
+            <div><div class="node-label">約騎提醒</div><div class="node-sub">當天06:00 / 前天20:00</div></div>
+          </div>
+          <div class="node orange"><span class="node-icon">🎉</span>
+            <div><div class="node-label">節日預告</div><div class="node-sub">前天20:00，Claude生成</div></div>
+          </div>
+          <div class="node orange"><span class="node-icon">📤</span>
+            <div><div class="node-label">排程推播</div><div class="node-sub">手動排定時間/內容</div></div>
+          </div>
+        </div>
+        <span class="note warn">⚠️ 目前免費版：200則/月，每月1日重置</span>
+        <span class="note info">🔜 升級選項：NT$800（3,000則）或 NT$2,000（無限）</span>
+      </div>
+    </div>
+
+    <div class="layer-label">AI 服務</div>
+    <div class="layer-content">
+      <div class="node-row">
+        <div class="node purple"><span class="node-icon">🧠</span>
+          <div><div class="node-label">Claude Haiku</div><div class="node-sub">一般對話 / 節日祝福生成</div></div>
+        </div>
+        <div class="node purple"><span class="node-icon">✨</span>
+          <div><div class="node-label">Claude Sonnet</div><div class="node-sub">賽事搜尋 + 複雜回答</div></div>
+        </div>
+        <span class="note success">💰 ~$0.19/月，5美元可用約2年</span>
+      </div>
+    </div>
+
+    <div class="layer-label">資料儲存</div>
+    <div class="layer-content">
+      <div class="stores">
+        <div class="store">
+          <div class="store-title">🗄️ D1 Database</div>
+          <div class="store-item">群組設定 group_settings</div>
+          <div class="store-item">關鍵字 keywords</div>
+          <div class="store-item">約騎行程 ride_schedule</div>
+          <div class="store-item">早安語錄 morning_messages</div>
+          <div class="store-item">早安圖庫 morning_images</div>
+          <div class="store-item">隊員生日 member_birthdays</div>
+          <div class="store-item">特殊節日 special_events</div>
+          <div class="store-item">排程推播 scheduled_push</div>
+          <div class="store-item">Cron設定 cron_settings</div>
+        </div>
+        <div class="store">
+          <div class="store-title">⚡ KV Store</div>
+          <div class="store-item">Bot設定 bot_config</div>
+          <div class="store-item">聯絡人名稱</div>
+          <div class="store-item">Bot名稱</div>
+          <div class="store-item">預設回覆</div>
+          <div class="store-item">額外人設（System Prompt）</div>
+        </div>
+        <div class="store">
+          <div class="store-title">🪣 R2 Storage</div>
+          <div class="store-item">早安圖片 morning/</div>
+          <div class="store-item">女生貼圖 stickers/female/ ×40</div>
+          <div class="store-item">男生貼圖 stickers/male/ ×40</div>
+          <div class="store-item">上傳圖片 photos/</div>
+          <div class="store-item">上傳影片 videos/</div>
+          <div class="store-item" style="color:#aaa;font-size:.65rem">media.sunbike.jego3c.com</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="layer-label">管理後台</div>
+    <div class="layer-content">
+      <div class="node-row">
+        <div class="node blue"><span class="node-icon">📊</span>
+          <div><div class="node-label">儀表板</div><div class="node-sub">系統狀態 / 統計 / Cron</div></div>
+        </div>
+        <div class="node blue"><span class="node-icon">💬</span>
+          <div><div class="node-label">群組管理</div><div class="node-sub">權限開關 / 排程推播</div></div>
+        </div>
+        <div class="node blue"><span class="node-icon">📝</span>
+          <div><div class="node-label">內容管理</div><div class="node-sub">節日/關鍵字/約騎/圖庫</div></div>
+        </div>
+        <div class="node blue"><span class="node-icon">⚙️</span>
+          <div><div class="node-label">系統設定</div><div class="node-sub">Bot設定 / LINE額度</div></div>
+        </div>
+      </div>
+      <span class="note info">🔐 bot.jego3c.com/admin（密碼保護）</span>
+    </div>
+
+    <div class="layer-label">基礎架構</div>
+    <div class="layer-content">
+      <div class="node-row">
+        <div class="node dark"><span class="node-icon">☁️</span>
+          <div><div class="node-label">Cloudflare Workers</div><div class="node-sub">無伺服器運算</div></div>
+        </div>
+        <div class="node dark"><span class="node-icon">🌐</span>
+          <div><div class="node-label">jego3c.com</div><div class="node-sub">Cloudflare DNS</div></div>
+        </div>
+        <div class="node dark"><span class="node-icon">📦</span>
+          <div><div class="node-label">GitHub</div><div class="node-sub">a4376976/sunbike-bot</div></div>
+        </div>
+        <div class="node dark"><span class="node-icon">💻</span>
+          <div><div class="node-label">本機開發</div><div class="node-sub">VS Code → wrangler deploy</div></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="legend">
+    <div class="legend-item"><div class="legend-dot" style="background:#FFD600"></div>用戶 / LINE</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#2e9e5b"></div>免費 ReplyToken</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#d97316"></div>付費 Push 推播</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#7c3aed"></div>Claude AI API</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#3b6fd4"></div>管理後台</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#888"></div>基礎架構</div>
+    <div style="margin-left:auto;font-size:.7rem;color:#aaa">陽光單車Bot v7.7 · 2026-05-12</div>
+  </div>
+
+</body>
+</html>
