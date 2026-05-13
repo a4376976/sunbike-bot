@@ -165,6 +165,50 @@ async function getWeather(city, env) {
   } catch(e) { return null; }
 }
 
+async function getWeather5Day(city, env) {
+  try {
+    const queryCity = CITY_MAP[city] || city;
+    const r = await fetch(`https://api.openweathermap.org/data/2.5/forecast?q=${encodeURIComponent(queryCity)}&appid=${env.OPENWEATHER_API_KEY}&units=metric&lang=zh_tw&cnt=40`);
+    const d = await r.json();
+    if (d.cod !== '200') return null;
+
+    // 每天取中午12點那筆（或最接近的）
+    const byDay = {};
+    for (const item of d.list) {
+      const date = item.dt_txt.slice(0, 10);
+      const hour = parseInt(item.dt_txt.slice(11, 13));
+      if (!byDay[date] || Math.abs(hour - 12) < Math.abs(parseInt(byDay[date].dt_txt.slice(11,13)) - 12)) {
+        byDay[date] = item;
+      }
+    }
+    const days = Object.values(byDay).slice(0, 5);
+    const lines = days.map((item, i) => {
+      const date = item.dt_txt.slice(0, 10);
+      const label = i === 0 ? '今天' : i === 1 ? '明天' : i === 2 ? '後天' : date.slice(5);
+      const temp = Math.round(item.main.temp);
+      const desc = item.weather[0].description;
+      const humidity = item.main.humidity;
+      const icon = temp > 30 ? '🔥' : temp > 25 ? '☀️' : temp > 18 ? '⛅' : temp > 10 ? '🌥️' : '🥶';
+      const rain = item.rain?.['3h'] || 0;
+      const rainStr = rain > 0 ? ` 🌧${rain.toFixed(1)}mm` : '';
+      return `${icon} ${label}（${date.slice(5)}）${temp}°C ${desc} 濕${humidity}%${rainStr}`;
+    });
+
+    // 自動警示
+    const warnings = [];
+    for (const item of days) {
+      const rain = item.rain?.['3h'] || 0;
+      const temp = Math.round(item.main.temp);
+      if (rain > 2) warnings.push('☔ 有雨，記得帶雨衣');
+      if (temp > 32) warnings.push('🥵 高溫，多補水防中暑');
+      if (temp < 12) warnings.push('🧊 低溫，注意保暖');
+    }
+    const uniqueWarnings = [...new Set(warnings)];
+
+    return lines.join('\n') + (uniqueWarnings.length ? '\n\n⚠️ ' + uniqueWarnings.join('、') : '');
+  } catch(e) { return null; }
+}
+
 async function claudeHaiku(text, env, systemOverride) {
   try {
     const r = await fetch('https://api.anthropic.com/v1/messages', {
@@ -190,12 +234,63 @@ async function claudeSonnet(text, searchResults, env) {
   } catch(e) { return await claudeHaiku(text, env); }
 }
 
+// ─── 知識庫查詢 ───────────────────────────────────────────
+async function queryKnowledge(text, env) {
+  try {
+    const rows = await env.SUNBIKE_DB.prepare(
+      'SELECT title, content, region, category FROM knowledge_base WHERE enabled=1'
+    ).all();
+    if (!rows.results || !rows.results.length) return '';
+    const t = text.toLowerCase();
+    const matched = rows.results.filter(r => {
+      const tags = (r.tags || '').toLowerCase();
+      const title = (r.title || '').toLowerCase();
+      const content = (r.content || '').toLowerCase();
+      const region = (r.region || '').toLowerCase();
+      return tags.split(',').some(tag => tag.trim() && t.includes(tag.trim()))
+        || t.includes(title)
+        || t.includes(region)
+        || content.split(' ').slice(0,5).some(w => w.length > 1 && t.includes(w));
+    });
+    if (!matched.length) return '';
+    return '【娜美知識庫】\n' + matched.slice(0, 3).map(r =>
+      `▸ ${r.title}（${r.region}）\n${r.content}`
+    ).join('\n\n');
+  } catch(e) { return ''; }
+}
+
 async function smartReply(text, env) {
-  const needsSearch = /環法|環西|環義|古典賽|今天|最新|賽況|誰贏|成績|排名|新聞|天氣|比賽結果/.test(text);
-  if (needsSearch) {
-    const searchResults = await braveSearch(text, env);
-    return await claudeSonnet(text, searchResults, env);
+  const yr = new Date().getFullYear();
+
+  // 意圖分類
+  const isRaceQuery   = /環法|環西|環義|古典賽|賽況|誰贏|成績|排名|黃衫|粉衫|紅點|Tour de France|Giro|Vuelta|UCI/.test(text);
+  const isRouteQuery  = /路線|約騎|爬坡|補給|公路車|幾K|公里|難度|騎行|推薦.*騎|騎.*推薦|哪裡騎|怎麼騎|適合騎/.test(text);
+  const isNewsQuery   = /今天|最新|最近|新聞|比賽結果|剛剛|昨天/.test(text);
+  const isWeatherQuery= /天氣|下雨|幾度|溫度|氣溫|適合騎車嗎|出發天氣/.test(text);
+
+  // 天氣 → 走天氣 API（由外層 handleNumberKeyword 處理，這裡給提示）
+  if (isWeatherQuery) {
+    return await claudeHaiku(`${text}（提示：使用者可輸入「4 城市名」查詢即時天氣）`, env);
   }
+
+  // 路線實務 → 先查知識庫，再給 Claude
+  if (isRouteQuery) {
+    const knowledge = await queryKnowledge(text, env);
+    if (knowledge) {
+      return await claudeSonnet(text, knowledge, env);
+    }
+    // 知識庫沒有 → Brave Search 補充
+    const sr = await braveSearch(`台灣公路車 ${text}`, env);
+    return await claudeSonnet(text, sr, env);
+  }
+
+  // 賽事 or 最新消息 → Brave Search
+  if (isRaceQuery || isNewsQuery) {
+    const sr = await braveSearch(`${yr} ${text}`, env);
+    return await claudeSonnet(text, sr, env);
+  }
+
+  // 一般聊天 → Claude Haiku 直接回
   return await claudeHaiku(text, env);
 }
 
@@ -209,15 +304,12 @@ async function handleNumberKeyword(num, userText, targetId, env, replyToken=null
   switch(num) {
     case '4': {
       const city = trimmed.replace(/^4\s*/, '').trim();
-      if (!city) { await reply( '請輸入城市名稱 😊\n例如：4 台北', env); return; }
-      const weatherData = await getWeather(city, env);
-      if (weatherData) {
-        const rideMsg = weatherData.includes('🔥') ? '\n\n⚠️ 天氣炎熱，騎車記得多補水！' :
-                        weatherData.includes('🌧') ? '\n\n🌧️ 有雨，出門記得評估路況！' :
-                        '\n\n✅ 天氣不錯，適合出門騎車！🚴‍♀️';
-        await reply( weatherData + rideMsg, env);
+      if (!city) { await reply('請輸入城市名稱 😊\n例如：4 台北', env); return; }
+      const w5 = await getWeather5Day(city, env);
+      if (w5) {
+        await reply(`🌤️ ${city} 未來5天天氣預報\n─────────────────\n${w5}\n\n娜美愛你 🚴‍♀️`, env);
       } else {
-        await reply( `抱歉～查不到「${city}」的天氣資料 😅\n請確認城市名稱，例如：4 Taipei 或 4 台北`, env);
+        await reply(`抱歉～查不到「${city}」的天氣資料 😅\n請確認城市名稱，例如：4 台北 或 4 宜蘭`, env);
       }
       break;
     }
@@ -244,28 +336,33 @@ async function handleNumberKeyword(num, userText, targetId, env, replyToken=null
       break;
     }
     case '6': {
-      const sr = await braveSearch('2025年春季五大古典賽 米蘭聖雷莫 佛萊明赫亥特 巴黎魯貝 列日巴斯托涅 阿姆斯特爾 結果', env);
-      await reply( await claudeSonnet('請回覆2025年3-4月春季五大古典賽最新賽況和冠軍，用娜美活潑風格，不超過150字', sr, env), env);
+      const yr6 = new Date().getFullYear();
+      const sr = await braveSearch(`${yr6}年春季五大古典賽 米蘭聖雷莫 佛萊明赫亥特 巴黎魯貝 列日巴斯托涅 阿姆斯特爾 結果`, env);
+      await reply(await claudeSonnet(`請回覆${yr6}年3-4月春季五大古典賽最新賽況和冠軍，用娜美活潑風格，不超過150字`, sr, env), env);
       break;
     }
     case '7': {
-      const sr = await braveSearch('2025 Giro d Italia 環義大賽 最新賽況 領騎', env);
-      await reply( await claudeSonnet('請回覆2025年環義大賽Giro d\'Italia最新賽況，用娜美活潑風格，不超過150字', sr, env), env);
+      const yr7 = new Date().getFullYear();
+      const sr = await braveSearch(`${yr7} Giro d Italia 環義大賽 最新賽況 領騎`, env);
+      await reply(await claudeSonnet(`請回覆${yr7}年環義大賽Giro d'Italia最新賽況，用娜美活潑風格，不超過150字`, sr, env), env);
       break;
     }
     case '8': {
-      const sr = await braveSearch('2025 環法前哨賽 Criterium Dauphine Tour Suisse 最新', env);
-      await reply( await claudeSonnet('請回覆2025年6月環法前哨賽最新賽況，用娜美活潑風格，不超過150字', sr, env), env);
+      const yr8 = new Date().getFullYear();
+      const sr = await braveSearch(`${yr8} 環法前哨賽 Criterium Dauphine Tour Suisse 最新`, env);
+      await reply(await claudeSonnet(`請回覆${yr8}年6月環法前哨賽最新賽況，用娜美活潑風格，不超過150字`, sr, env), env);
       break;
     }
     case '9': {
-      const sr = await braveSearch('2025 Tour de France 環法大賽 最新賽況 黃衫', env);
-      await reply( await claudeSonnet('請回覆2025年環法大賽Tour de France最新賽況，用娜美活潑風格，不超過150字', sr, env), env);
+      const yr9 = new Date().getFullYear();
+      const sr = await braveSearch(`${yr9} Tour de France 環法大賽 最新賽況 黃衫`, env);
+      await reply(await claudeSonnet(`請回覆${yr9}年環法大賽Tour de France最新賽況，用娜美活潑風格，不超過150字`, sr, env), env);
       break;
     }
     case '10': {
-      const sr = await braveSearch('2025 Vuelta Espana 環西 世界錦標賽 倫巴底環繞賽 最新', env);
-      await reply( await claudeSonnet('請回覆2025年8-10月環西、世錦賽、倫巴底最新賽況，用娜美活潑風格，不超過150字', sr, env), env);
+      const yr10 = new Date().getFullYear();
+      const sr = await braveSearch(`${yr10} Vuelta Espana 環西 世界錦標賽 倫巴底環繞賽 最新`, env);
+      await reply(await claudeSonnet(`請回覆${yr10}年8-10月環西、世錦賽、倫巴底最新賽況，用娜美活潑風格，不超過150字`, sr, env), env);
       break;
     }
     case '11': {
@@ -474,7 +571,7 @@ button:active{transform:translateY(0)}
 }
 
 async function dashboardPage(env) {
-  const [rides, msgs, bdays, keywords, events, cronRows, groupRows, schedules, morningImgs] = await Promise.all([
+  const [rides, msgs, bdays, keywords, events, cronRows, groupRows, schedules, morningImgs, knowledgeRows] = await Promise.all([
     env.SUNBIKE_DB.prepare('SELECT * FROM ride_schedule ORDER BY ride_date DESC LIMIT 20').all(),
     env.SUNBIKE_DB.prepare('SELECT * FROM morning_messages ORDER BY id DESC LIMIT 30').all(),
     env.SUNBIKE_DB.prepare('SELECT * FROM member_birthdays ORDER BY birthday').all(),
@@ -484,6 +581,7 @@ async function dashboardPage(env) {
     env.SUNBIKE_DB.prepare('SELECT gs.*, gi.group_name as gi_name, gi.created_at as joined_at FROM group_settings gs LEFT JOIN group_ids gi ON gs.group_id = gi.group_id').all(),
     env.SUNBIKE_DB.prepare("SELECT * FROM scheduled_push ORDER BY push_date DESC, push_hour DESC LIMIT 30").all(),
     env.SUNBIKE_DB.prepare("SELECT * FROM morning_images WHERE active=1 ORDER BY id DESC").all(),
+    env.SUNBIKE_DB.prepare("SELECT * FROM knowledge_base ORDER BY id DESC LIMIT 100").all(),
   ]);
 
   const toggle = (id, field, val) => `<input type="checkbox" ${val?'checked':''} onchange="toggleGroup('${id}','${field}',this.checked)" style="width:18px;height:18px;cursor:pointer;accent-color:#FFD600">`;
@@ -522,7 +620,36 @@ async function dashboardPage(env) {
       <td><button class="btn-del" onclick="del('/api/schedules/${s.id}')">刪除</button></td>
     </tr>`).join('');
 
-  const rideRows = (rides.results||[]).map(r => `<tr><td>${r.ride_date}</td><td>${r.title||''}</td><td>${r.meeting_place||''}</td><td>${r.meet_time||''}</td><td>${(r.route||'').slice(0,25)}</td><td><button class="btn-del" onclick="del('/api/rides/${r.id}')">刪除</button></td></tr>`).join('');
+  const rideRows = (rides.results||[]).map(r => `
+  <tr id="ride-row-${r.id}">
+    <td>${r.ride_date}</td>
+    <td>${r.title||''}</td>
+    <td>${r.meeting_place||''}</td>
+    <td>${r.meet_time||''}</td>
+    <td>${(r.route||'').slice(0,20)}</td>
+    <td>${r.weather_city ? `<span class="badge">${r.weather_city}</span>` : '<span style="color:#555">—</span>'}</td>
+    <td style="text-align:center"><input type="checkbox" ${r.weather_push?'checked':''} disabled style="accent-color:#FFD600"></td>
+    <td style="white-space:nowrap">
+      <button class="btn-edit" onclick="editRide(${r.id})">編輯</button>
+      <button class="btn-del" onclick="delRide(${r.id})">刪除</button>
+    </td>
+  </tr>
+  <tr id="ride-edit-${r.id}" style="display:none;background:var(--hover-bg)">
+    <td colspan="8" style="padding:12px">
+      <div class="form-grid" style="margin-bottom:8px">
+        <div><label class="form-label">日期</label><input type="date" id="re_date_${r.id}" value="${r.ride_date}"></div>
+        <div><label class="form-label">標題</label><input type="text" id="re_title_${r.id}" value="${(r.title||'').replace(/"/g,'&quot;')}"></div>
+        <div><label class="form-label">集合地點</label><input type="text" id="re_place_${r.id}" value="${(r.meeting_place||'').replace(/"/g,'&quot;')}"></div>
+        <div><label class="form-label">集合時間</label><input type="time" id="re_meet_${r.id}" value="${r.meet_time||''}"></div>
+        <div><label class="form-label">天氣推播城市</label><input type="text" id="re_wcity_${r.id}" value="${(r.weather_city||'').replace(/"/g,'&quot;')}"></div>
+        <div style="display:flex;align-items:flex-end;padding-bottom:2px"><label style="display:flex;align-items:center;gap:8px;font-size:.88rem;color:var(--text2);cursor:pointer"><input type="checkbox" id="re_wpush_${r.id}" ${r.weather_push?'checked':''} style="width:auto;accent-color:#FFD600"> 啟用天氣推播</label></div>
+        <div class="form-full"><label class="form-label">路線</label><input type="text" id="re_route_${r.id}" value="${(r.route||'').replace(/"/g,'&quot;')}"></div>
+        <div class="form-full"><label class="form-label">備註</label><textarea id="re_notes_${r.id}" style="min-height:50px">${r.notes||''}</textarea></div>
+      </div>
+      <button class="btn btn-primary" onclick="saveRide(${r.id})" style="margin-right:8px">儲存</button>
+      <button class="btn" onclick="cancelEditRide(${r.id})" style="background:var(--bg3);border:1px solid var(--border2);color:var(--text)">取消</button>
+    </td>
+  </tr>`).join('');
 
   const msgRows = (msgs.results||[]).map(m => `
     <tr>
@@ -537,6 +664,40 @@ async function dashboardPage(env) {
         <button class="btn-del" onclick="del('/api/messages/${m.id}')">刪除</button>
       </td>
     </tr>`).join('');
+
+  const knowledgeRowsHtml = (knowledgeRows.results||[]).map(k => `
+  <tr id="kb-row-${k.id}">
+    <td><span class="badge">${k.category||'路線'}</span></td>
+    <td>${k.region||''}</td>
+    <td style="font-weight:600">${k.title||''}</td>
+    <td style="font-size:.78rem;color:var(--text3);max-width:120px">${k.tags||''}</td>
+    <td style="max-width:200px;font-size:.82rem;word-break:break-all">${(k.content||'').slice(0,60)}${(k.content||'').length>60?'…':''}</td>
+    <td style="text-align:center"><input type="checkbox" ${k.enabled?'checked':''} onchange="toggleKnowledge(${k.id},this.checked)" style="accent-color:#FFD600;width:18px;height:18px;cursor:pointer"></td>
+    <td style="white-space:nowrap">
+      <button class="btn-edit" onclick="editKb(${k.id})">編輯</button>
+      <button class="btn-del" onclick="delKb(${k.id})">刪除</button>
+    </td>
+  </tr>
+  <tr id="kb-edit-${k.id}" style="display:none;background:var(--hover-bg)">
+    <td colspan="7" style="padding:12px">
+      <div class="form-grid" style="margin-bottom:8px">
+        <div><label class="form-label">分類</label><select id="kbe_cat_${k.id}">
+          <option value="路線" ${k.category==='路線'?'selected':''}>路線</option>
+          <option value="補給" ${k.category==='補給'?'selected':''}>補給</option>
+          <option value="安全" ${k.category==='安全'?'selected':''}>安全注意</option>
+          <option value="裝備" ${k.category==='裝備'?'selected':''}>裝備建議</option>
+          <option value="賽事" ${k.category==='賽事'?'selected':''}>賽事資訊</option>
+          <option value="其他" ${k.category==='其他'?'selected':''}>其他</option>
+        </select></div>
+        <div><label class="form-label">地區</label><input type="text" id="kbe_region_${k.id}" value="${(k.region||'').replace(/"/g,'&quot;')}"></div>
+        <div><label class="form-label">標題</label><input type="text" id="kbe_title_${k.id}" value="${(k.title||'').replace(/"/g,'&quot;')}"></div>
+        <div><label class="form-label">Tags</label><input type="text" id="kbe_tags_${k.id}" value="${(k.tags||'').replace(/"/g,'&quot;')}"></div>
+        <div class="form-full"><label class="form-label">內容</label><textarea id="kbe_content_${k.id}" style="min-height:80px">${(k.content||'').replace(/</g,'&lt;')}</textarea></div>
+      </div>
+      <button class="btn btn-primary" onclick="saveKb(${k.id})" style="margin-right:8px">儲存</button>
+      <button class="btn" onclick="cancelEditKb(${k.id})" style="background:var(--bg3);border:1px solid var(--border2);color:var(--text)">取消</button>
+    </td>
+  </tr>`).join('');
 
   const quotaRes = await fetch('https://api.line.me/v2/bot/message/quota', {headers:{'Authorization':`Bearer ${env.LINE_CHANNEL_ACCESS_TOKEN}`}}).then(r=>r.json()).catch(()=>({value:0}));
   const consumeRes = await fetch('https://api.line.me/v2/bot/message/quota/consumption', {headers:{'Authorization':`Bearer ${env.LINE_CHANNEL_ACCESS_TOKEN}`}}).then(r=>r.json()).catch(()=>({totalUsage:0}));
@@ -762,7 +923,7 @@ tr:hover td{background:var(--hover-bg)}
   <div class="topbar-brand">
     <div class="topbar-logo">🚴‍♀️</div>
     <span class="topbar-title">陽光單車後台</span>
-    <span class="topbar-version">v7.7</span>
+    <span class="topbar-version">v7.9</span>
   </div>
   <div class="topbar-right">
     <a href="https://console.anthropic.com/settings/usage" target="_blank" class="quota-badge" style="text-decoration:none" title="查看 Claude API 用量">
@@ -787,6 +948,7 @@ tr:hover td{background:var(--hover-bg)}
   <button class="tab-btn active" onclick="switchTab('dashboard',this)"><span class="tab-icon">📊</span>儀表板</button>
   <button class="tab-btn" onclick="switchTab('groups',this)"><span class="tab-icon">💬</span>群組管理</button>
   <button class="tab-btn" onclick="switchTab('content',this)"><span class="tab-icon">📝</span>內容管理</button>
+  <button class="tab-btn" onclick="switchTab('knowledge',this)"><span class="tab-icon">🧠</span>知識庫</button>
   <button class="tab-btn" onclick="switchTab('system',this)"><span class="tab-icon">⚙️</span>系統設定</button>
 </div>
 
@@ -806,7 +968,7 @@ tr:hover td{background:var(--hover-bg)}
         </div>
         <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:var(--bg3);border-radius:8px;border:1px solid var(--border)">
           <span style="font-size:.88rem;color:var(--text2)">🏷️ 目前版本</span>
-          <span style="color:#FFD600;font-weight:600;font-size:.88rem">v7.7</span>
+          <span style="color:#FFD600;font-weight:600;font-size:.88rem">v7.9</span>
         </div>
         <div style="display:flex;justify-content:space-between;align-items:center;padding:10px 14px;background:var(--bg3);border-radius:8px;border:1px solid var(--border)">
           <span style="font-size:.88rem;color:var(--text2)">🌐 網址</span>
@@ -992,12 +1154,14 @@ tr:hover td{background:var(--hover-bg)}
       <div><label class="form-label">集合地點</label><input type="text" id="r_place" placeholder="集合地點"></div>
       <div><label class="form-label">集合時間</label><input type="time" id="r_meet_time"></div>
       <div><label class="form-label">出發時間</label><input type="time" id="r_start_time"></div>
+      <div><label class="form-label">天氣推播城市</label><input type="text" id="r_weather_city" placeholder="例：羅東、花蓮（空白=不推播）"></div>
+      <div style="display:flex;align-items:flex-end;padding-bottom:2px"><label style="display:flex;align-items:center;gap:8px;font-size:.88rem;color:var(--text2);cursor:pointer"><input type="checkbox" id="r_weather_push" style="width:auto;accent-color:#FFD600"> 啟用天氣預報推播（出發前5天）</label></div>
       <div class="form-full"><label class="form-label">路線</label><input type="text" id="r_route" placeholder="路線"></div>
       <div class="form-full"><label class="form-label">備註</label><textarea id="r_notes" placeholder="備註" style="min-height:50px"></textarea></div>
     </div>
     <button class="btn btn-primary" onclick="addRide()">新增約騎</button>
     <table style="margin-top:16px">
-      <thead><tr><th>日期</th><th>標題</th><th>集合地點</th><th>集合時間</th><th>路線</th><th>操作</th></tr></thead>
+      <thead><tr><th>日期</th><th>標題</th><th>集合地點</th><th>集合時間</th><th>路線</th><th>天氣城市</th><th>天氣推播</th><th>操作</th></tr></thead>
       <tbody>${rideRows}</tbody>
     </table>
   </div>
@@ -1033,7 +1197,46 @@ tr:hover td{background:var(--hover-bg)}
 </div>
 
 <!-- ═══════════════════════════════════════
-     TAB 4：系統設定
+     TAB 4：知識庫
+═══════════════════════════════════════ -->
+<div class="tab-pane" id="tab-knowledge">
+
+  <div class="card">
+    <div class="card-title">🧠 娜美知識庫</div>
+    <p class="hint" style="margin-bottom:14px">新增路線、補給、安全注意等資料，娜美回答問題時會優先參考這裡。Tags 用逗號分隔，越精確越好。</p>
+    <div class="form-grid">
+      <div><label class="form-label">分類</label><select id="kb_category">
+        <option value="路線">路線</option>
+        <option value="補給">補給</option>
+        <option value="安全">安全注意</option>
+        <option value="裝備">裝備建議</option>
+        <option value="賽事">賽事資訊</option>
+        <option value="其他">其他</option>
+      </select></div>
+      <div><label class="form-label">地區</label><input type="text" id="kb_region" placeholder="例：桃園、北台灣、全台"></div>
+      <div><label class="form-label">標題</label><input type="text" id="kb_title" placeholder="例：北宜公路"></div>
+      <div><label class="form-label">Tags（逗號分隔）</label><input type="text" id="kb_tags" placeholder="例：北宜,宜蘭,爬坡,補給,坪林"></div>
+      <div class="form-full"><label class="form-label">內容（盡量詳細，娜美會直接引用）</label>
+        <textarea id="kb_content" placeholder="例：北宜公路全長約56公里，起點台北木柵，終點宜蘭市區。主要爬升在坪林段，海拔約440公尺。補給點：坪林7-11（約K28）、礁溪全家（終點前）。注意：下坡彎道多，雨天路滑需減速。適合程度：中進階。" style="min-height:100px"></textarea>
+      </div>
+    </div>
+    <button class="btn btn-primary" onclick="addKnowledge()">新增知識條目</button>
+  </div>
+
+  <div class="card">
+    <div class="card-title">📋 知識庫列表 <span style="font-weight:400;color:var(--text3);font-size:.82rem">共 ${(knowledgeRows.results||[]).length} 筆</span></div>
+    <div style="overflow-x:auto">
+    <table>
+      <thead><tr><th>分類</th><th>地區</th><th>標題</th><th>Tags</th><th>內容預覽</th><th>啟用</th><th>操作</th></tr></thead>
+      <tbody>${knowledgeRowsHtml}</tbody>
+    </table>
+    </div>
+  </div>
+
+</div>
+
+<!-- ═══════════════════════════════════════
+     TAB 5：系統設定
 ═══════════════════════════════════════ -->
 <div class="tab-pane" id="tab-system">
 
@@ -1077,6 +1280,21 @@ tr:hover td{background:var(--hover-bg)}
       <div>平台：<span style="color:#ccc">Cloudflare Workers</span></div>
       <div>Bot 帳號：<span style="color:#ccc">@862bfsiu</span></div>
       <div>GitHub：<span style="color:#FFD600">a4376976/sunbike-bot</span></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-title">🗺️ 系統架構圖</div>
+    <p style="font-size:.88rem;color:var(--text2);margin-bottom:12px">點擊下方按鈕在新視窗開啟完整架構圖，可列印成紙本備存。</p>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <a href="https://raw.githack.com/a4376976/sunbike-bot/main/architecture.html" target="_blank"
+        class="btn btn-primary" style="text-decoration:none">
+        🗺️ 開啟架構圖
+      </a>
+      <a href="https://github.com/a4376976/sunbike-bot/blob/main/architecture.html" target="_blank"
+        class="btn" style="text-decoration:none;background:var(--bg3);border:1px solid var(--border2);color:var(--text)">
+        📦 GitHub 原始檔
+      </a>
     </div>
   </div>
 
@@ -1161,7 +1379,54 @@ async function editKw(id){document.getElementById('kw-content-'+id).style.displa
 async function saveKw(id){const content=document.getElementById('kw-edit-'+id).value.trim();const desc=document.getElementById('kw-desc-edit-'+id).value.trim();const res=await api('/api/keywords/'+id,'PATCH',{reply_content:content,description:desc});if(res.ok){showToast('已更新');location.reload()}else showToast('更新失敗',false)}
 
 // ── Rides ──
-async function addRide(){const d={ride_date:document.getElementById('r_date').value,title:document.getElementById('r_title').value,meeting_place:document.getElementById('r_place').value,meet_time:document.getElementById('r_meet_time').value,start_time:document.getElementById('r_start_time').value,route:document.getElementById('r_route').value,notes:document.getElementById('r_notes').value};if(!d.ride_date||!d.meeting_place)return showToast('請填寫日期和集合地點',false);const res=await api('/api/rides','POST',d);if(res.ok){showToast('新增成功！');location.reload()}else showToast('新增失敗',false)}
+function editRide(id){document.getElementById('ride-edit-'+id).style.display='';document.getElementById('ride-row-'+id).style.opacity='.4'}
+function cancelEditRide(id){document.getElementById('ride-edit-'+id).style.display='none';document.getElementById('ride-row-'+id).style.opacity='1'}
+async function saveRide(id){
+  const d={ride_date:document.getElementById('re_date_'+id).value,title:document.getElementById('re_title_'+id).value,meeting_place:document.getElementById('re_place_'+id).value,meet_time:document.getElementById('re_meet_'+id).value,route:document.getElementById('re_route_'+id).value,notes:document.getElementById('re_notes_'+id).value,weather_city:document.getElementById('re_wcity_'+id).value.trim(),weather_push:document.getElementById('re_wpush_'+id).checked?1:0};
+  if(!d.ride_date||!d.meeting_place)return showToast('請填寫日期和集合地點',false);
+  const res=await api('/api/rides/'+id,'PATCH',d);
+  if(res.ok){
+    showToast('已更新 ✅');
+    // 原地更新顯示列
+    const row=document.getElementById('ride-row-'+id);
+    const cells=row.querySelectorAll('td');
+    cells[0].textContent=d.ride_date;cells[1].textContent=d.title;cells[2].textContent=d.meeting_place;cells[3].textContent=d.meet_time;cells[4].textContent=(d.route||'').slice(0,20);
+    cells[5].innerHTML=d.weather_city?'<span class="badge">'+d.weather_city+'</span>':'<span style="color:#555">—</span>';
+    cells[6].innerHTML='<input type="checkbox"'+(d.weather_push?' checked':'')+' disabled style="accent-color:#FFD600">';
+    cancelEditRide(id);
+  } else showToast('更新失敗',false);
+}
+async function delRide(id){
+  if(!confirm('確定刪除？'))return;
+  const res=await api('/api/rides/'+id,'DELETE');
+  if(res.ok){showToast('已刪除');document.getElementById('ride-row-'+id).remove();const edit=document.getElementById('ride-edit-'+id);if(edit)edit.remove();}
+  else showToast('刪除失敗',false);
+}
+async function addRide(){const d={ride_date:document.getElementById('r_date').value,title:document.getElementById('r_title').value,meeting_place:document.getElementById('r_place').value,meet_time:document.getElementById('r_meet_time').value,start_time:document.getElementById('r_start_time').value,route:document.getElementById('r_route').value,notes:document.getElementById('r_notes').value,weather_city:document.getElementById('r_weather_city').value.trim(),weather_push:document.getElementById('r_weather_push').checked?1:0};if(!d.ride_date||!d.meeting_place)return showToast('請填寫日期和集合地點',false);const res=await api('/api/rides','POST',d);if(res.ok){showToast('新增成功！');location.reload()}else showToast('新增失敗',false)}
+
+// ── Knowledge ──
+function editKb(id){document.getElementById('kb-edit-'+id).style.display='';document.getElementById('kb-row-'+id).style.opacity='.4'}
+function cancelEditKb(id){document.getElementById('kb-edit-'+id).style.display='none';document.getElementById('kb-row-'+id).style.opacity='1'}
+async function saveKb(id){
+  const d={category:document.getElementById('kbe_cat_'+id).value,region:document.getElementById('kbe_region_'+id).value.trim(),title:document.getElementById('kbe_title_'+id).value.trim(),tags:document.getElementById('kbe_tags_'+id).value.trim(),content:document.getElementById('kbe_content_'+id).value.trim()};
+  if(!d.title||!d.content)return showToast('請填寫標題和內容',false);
+  const res=await api('/api/knowledge/'+id,'PATCH',d);
+  if(res.ok){
+    showToast('已更新 ✅');
+    const row=document.getElementById('kb-row-'+id);
+    const cells=row.querySelectorAll('td');
+    cells[0].innerHTML='<span class="badge">'+d.category+'</span>';cells[1].textContent=d.region;cells[2].textContent=d.title;cells[3].textContent=d.tags;cells[4].textContent=(d.content||'').slice(0,60)+((d.content||'').length>60?'…':'');
+    cancelEditKb(id);
+  } else showToast('更新失敗',false);
+}
+async function delKb(id){
+  if(!confirm('確定刪除？'))return;
+  const res=await api('/api/knowledge/'+id,'DELETE');
+  if(res.ok){showToast('已刪除');document.getElementById('kb-row-'+id).remove();const edit=document.getElementById('kb-edit-'+id);if(edit)edit.remove();}
+  else showToast('刪除失敗',false);
+}
+async function addKnowledge(){const d={category:document.getElementById('kb_category').value,region:document.getElementById('kb_region').value.trim(),title:document.getElementById('kb_title').value.trim(),tags:document.getElementById('kb_tags').value.trim(),content:document.getElementById('kb_content').value.trim()};if(!d.title||!d.content)return showToast('請填寫標題和內容',false);const res=await api('/api/knowledge','POST',d);if(res.ok){showToast('新增成功！');location.reload()}else showToast('新增失敗',false)}
+async function toggleKnowledge(id,val){const res=await api('/api/knowledge/'+id,'PATCH',{enabled:val?1:0});if(res.ok)showToast('已更新');else showToast('更新失敗',false)}
 
 // ── Birthdays ──
 async function addBday(){const name=document.getElementById('b_name').value.trim(),birthday=document.getElementById('b_date').value;if(!name||!birthday)return showToast('請填寫姓名和生日',false);const res=await api('/api/birthdays','POST',{name,birthday});if(res.ok){showToast('新增成功！');location.reload()}}
@@ -1324,11 +1589,36 @@ export default {
       }
       if (path === '/api/rides' && method === 'POST') {
         const b = await request.json();
-        await env.SUNBIKE_DB.prepare('INSERT INTO ride_schedule (ride_date,title,meeting_place,meet_time,start_time,route,notes) VALUES (?,?,?,?,?,?,?)').bind(b.ride_date,b.title||'',b.meeting_place||'',b.meet_time||'',b.start_time||'',b.route||'',b.notes||'').run();
+        await env.SUNBIKE_DB.prepare('INSERT INTO ride_schedule (ride_date,title,meeting_place,meet_time,start_time,route,notes,weather_city,weather_push) VALUES (?,?,?,?,?,?,?,?,?)').bind(b.ride_date,b.title||'',b.meeting_place||'',b.meet_time||'',b.start_time||'',b.route||'',b.notes||'',b.weather_city||'',b.weather_push||0).run();
+        return Response.json({ok:true});
+      }
+      if (path.startsWith('/api/rides/') && method === 'PATCH') {
+        const id = path.split('/').pop();
+        const b = await request.json();
+        await env.SUNBIKE_DB.prepare('UPDATE ride_schedule SET ride_date=?,title=?,meeting_place=?,meet_time=?,route=?,notes=?,weather_city=?,weather_push=? WHERE id=?').bind(b.ride_date,b.title||'',b.meeting_place||'',b.meet_time||'',b.route||'',b.notes||'',b.weather_city||'',b.weather_push||0,id).run();
         return Response.json({ok:true});
       }
       if (path.startsWith('/api/rides/') && method === 'DELETE') {
         await env.SUNBIKE_DB.prepare('DELETE FROM ride_schedule WHERE id=?').bind(path.split('/').pop()).run();
+        return Response.json({ok:true});
+      }
+      if (path === '/api/knowledge' && method === 'POST') {
+        const b = await request.json();
+        await env.SUNBIKE_DB.prepare('INSERT INTO knowledge_base (category,region,title,tags,content) VALUES (?,?,?,?,?)').bind(b.category||'路線',b.region||'全台',b.title,b.tags||'',b.content).run();
+        return Response.json({ok:true});
+      }
+      if (path.startsWith('/api/knowledge/') && method === 'PATCH') {
+        const id = path.split('/').pop();
+        const b = await request.json();
+        if (b.enabled !== undefined) {
+          await env.SUNBIKE_DB.prepare('UPDATE knowledge_base SET enabled=? WHERE id=?').bind(b.enabled,id).run();
+        } else {
+          await env.SUNBIKE_DB.prepare('UPDATE knowledge_base SET category=?,region=?,title=?,tags=?,content=? WHERE id=?').bind(b.category||'路線',b.region||'全台',b.title,b.tags||'',b.content,id).run();
+        }
+        return Response.json({ok:true});
+      }
+      if (path.startsWith('/api/knowledge/') && method === 'DELETE') {
+        await env.SUNBIKE_DB.prepare('DELETE FROM knowledge_base WHERE id=?').bind(path.split('/').pop()).run();
         return Response.json({ok:true});
       }
       if (path === '/api/messages' && method === 'POST') {
@@ -1419,6 +1709,49 @@ export default {
     if (!groups.length) return;
 
     await processScheduledPush(twDate, twHour, groups, env);
+
+    // ── 每週日常規天氣推播（從週二開始，5天前觸發）──
+    if (cron.morning?.enabled && twHour === Number(cron.morning.push_hour_tw)) {
+      const twDay = twDate.getUTCDay(); // 0=日,1=一,...,6=六
+      // 計算距下週日幾天
+      const daysToSunday = twDay === 0 ? 7 : 7 - twDay;
+      if (daysToSunday >= 1 && daysToSunday <= 5) {
+        // 是否有特殊約騎覆蓋
+        const sundayDate = new Date(twDate.getTime() + daysToSunday * 24 * 3600000).toISOString().slice(0, 10);
+        const specialRide = await env.SUNBIKE_DB.prepare(
+          'SELECT * FROM ride_schedule WHERE ride_date=? AND weather_push=1 AND weather_city!=\'\'').bind(sundayDate).first();
+        if (!specialRide) {
+          // 固定練車 → 推桃園天氣
+          const w5 = await getWeather5Day('桃園', env);
+          if (w5) {
+            const dayLabel = daysToSunday === 1 ? '明天' : `還有${daysToSunday}天`;
+            const msg = `🚴 週日練車天氣預報（${dayLabel}出發）\n📍 桃園\n─────────────────\n${w5}\n\n娜美提醒你做好準備 ❤️`;
+            for (const g of groups) {
+              if (g.ride_reminder) await linePush(g.group_id, msg, env);
+            }
+          }
+        }
+      }
+    }
+
+    // ── 特殊約騎天氣推播（weather_push=1，出發前5天）──
+    if (cron.morning?.enabled && twHour === Number(cron.morning.push_hour_tw)) {
+      const upcoming = await env.SUNBIKE_DB.prepare(
+        'SELECT * FROM ride_schedule WHERE weather_push=1 AND weather_city!=\'\' AND ride_date > ? AND ride_date <= ?'
+      ).bind(today, new Date(twDate.getTime() + 5 * 24 * 3600000).toISOString().slice(0, 10)).all();
+      for (const ride of (upcoming.results || [])) {
+        const rideDate = new Date(ride.ride_date + 'T00:00:00+08:00');
+        const daysLeft = Math.round((rideDate - twDate) / (24 * 3600000));
+        if (daysLeft < 1 || daysLeft > 5) continue;
+        const w5 = await getWeather5Day(ride.weather_city, env);
+        if (!w5) continue;
+        const dayLabel = daysLeft === 1 ? '明天出發！' : `距出發還有${daysLeft}天`;
+        const msg = `🚵 ${ride.title || '約騎'}天氣預報\n📅 出發日：${ride.ride_date}（${dayLabel}）\n📍 目的地：${ride.weather_city}\n─────────────────\n${w5}\n\n娜美愛你們 ❤️🚴‍♀️`;
+        for (const g of groups) {
+          if (g.ride_reminder) await linePush(g.group_id, msg, env);
+        }
+      }
+    }
 
     if (cron.morning?.enabled && twHour === Number(cron.morning.push_hour_tw)) {
       const specialEv = await env.SUNBIKE_DB.prepare('SELECT * FROM special_events WHERE event_date=? AND enabled=1').bind(today).first();
